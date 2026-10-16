@@ -1,0 +1,22 @@
+# Env files: never commit real secrets. Only .env.example is tracked.
+.env
+.env.*
+!.env.example
+
+# Node / Next.js
+node_modules/
+.next/
+.vercel/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Supabase CLI
+supabase/.temp/
+
+# OS
+.DS_Store
+Thumbs.db
