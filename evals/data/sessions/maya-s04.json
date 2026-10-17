@@ -1,0 +1,113 @@
+{
+  "id": "maya-s04",
+  "persona": "maya",
+  "date": "2026-09-15",
+  "mode": "mock",
+  "generator": "gemini-3.8-flash",
+  "turns": [
+    {
+      "id": "maya-s04:t01",
+      "speaker": "wren",
+      "text": "Hey Maya. Ready to try that hiring-manager mock today?",
+      "facts": []
+    },
+    {
+      "id": "maya-s04:t02",
+      "speaker": "user",
+      "text": "Yeah, let's do it. I'm ready to jump back in after last week.",
+      "facts": []
+    },
+    {
+      "id": "maya-s04:t03",
+      "speaker": "wren",
+      "text": "I'm stepping into the hiring manager role now. Maya, can you tell me about a time you had to handle an angry stakeholder under pressure?",
+      "facts": []
+    },
+    {
+      "id": "maya-s04:t04",
+      "speaker": "user",
+      "text": "Sure. When I was the campus IT help desk lead, a professor rushed in shouting because his conference slides and research files were missing right before a talk. He was furious and panicked, but I kept him calm and walked him through a live data-recovery fix on his machine until we got every file back.",
+      "facts": [
+        "maya-f04"
+      ]
+    },
+    {
+      "id": "maya-s04:t05",
+      "speaker": "wren",
+      "text": "That shows steady composure under fire. How did that experience shape how you'd handle an upset prospect on a sales call?",
+      "facts": []
+    },
+    {
+      "id": "maya-s04:t06",
+      "speaker": "user",
+      "text": "It taught me to acknowledge their stress first instead of getting defensive, and then guide them through the next steps clearly so they feel supported.",
+      "facts": []
+    },
+    {
+      "id": "maya-s04:t07",
+      "speaker": "wren",
+      "text": "That ties right back to sales outreach. Stepping out of interviewer mode now. How did that feel to say out loud?",
+      "facts": []
+    },
+    {
+      "id": "maya-s04:t08",
+      "speaker": "user",
+      "text": "It felt much smoother than my earlier attempts. How did the delivery sound to you?",
+      "facts": []
+    },
+    {
+      "id": "maya-s04:t09",
+      "speaker": "wren",
+      "text": "Your opener really landed. When you lead with a specific number right away, it immediately hooks the listener. Did you feel that difference too?",
+      "facts": [
+        "maya-f07"
+      ]
+    },
+    {
+      "id": "maya-s04:t10",
+      "speaker": "user",
+      "text": "Totally. My openers always land so much better when I lead with a number right at the start. It gives everything weight.",
+      "facts": [
+        "maya-f07"
+      ]
+    },
+    {
+      "id": "maya-s04:t11",
+      "speaker": "wren",
+      "text": "It grabs attention before you even explain the fix. Was there any part of the answer you'd want to trim?",
+      "facts": []
+    },
+    {
+      "id": "maya-s04:t12",
+      "speaker": "user",
+      "text": "Maybe just wrap up the sales connection a few seconds faster, but overall it felt solid.",
+      "facts": []
+    },
+    {
+      "id": "maya-s04:t13",
+      "speaker": "wren",
+      "text": "A quick conclusion is an easy adjustment to make. How are you holding up after running through that?",
+      "facts": []
+    },
+    {
+      "id": "maya-s04:t14",
+      "speaker": "user",
+      "text": "Honestly, I feel so energized after doing this mock and having that opener land the way it did. It's such a relief.",
+      "facts": [
+        "maya-f17"
+      ]
+    },
+    {
+      "id": "maya-s04:t15",
+      "speaker": "wren",
+      "text": "That energy really showed in your tone. Would you like to wrap things up here on a high note?",
+      "facts": []
+    },
+    {
+      "id": "maya-s04:t16",
+      "speaker": "user",
+      "text": "Yes, definitely. Thanks Wren, that was super helpful.",
+      "facts": []
+    }
+  ]
+}

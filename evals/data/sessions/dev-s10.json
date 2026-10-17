@@ -1,0 +1,97 @@
+{
+  "id": "dev-s10",
+  "persona": "dev",
+  "date": "2026-10-13",
+  "mode": "checkin",
+  "generator": "gemini-3.8-flash",
+  "turns": [
+    {
+      "id": "dev-s10:t01",
+      "speaker": "wren",
+      "text": "Welcome back, Dev. How are things feeling as you kick off the week?",
+      "facts": []
+    },
+    {
+      "id": "dev-s10:t02",
+      "speaker": "user",
+      "text": "Hey Wren. Hanging in there, though honestly, sending resumes out into the void is starting to wear on me a bit.",
+      "facts": []
+    },
+    {
+      "id": "dev-s10:t03",
+      "speaker": "wren",
+      "text": "Cold applications can really drain your energy. Have you thought about reaching out to someone in your network for an opening?",
+      "facts": []
+    },
+    {
+      "id": "dev-s10:t04",
+      "speaker": "user",
+      "text": "Yeah, actually, that crossed my mind today. My former teaching colleague Marcus works over at Ledgerly now, and I really want to see if he'd give me a referral.",
+      "facts": [
+        "dev-f11"
+      ]
+    },
+    {
+      "id": "dev-s10:t05",
+      "speaker": "wren",
+      "text": "That sounds like a great path to explore. How are you planning to open the conversation with him?",
+      "facts": []
+    },
+    {
+      "id": "dev-s10:t06",
+      "speaker": "user",
+      "text": "I was thinking of dropping him a note to say hi, and maybe share a link to my portfolio so he can see what I've been building.",
+      "facts": []
+    },
+    {
+      "id": "dev-s10:t07",
+      "speaker": "wren",
+      "text": "Showing real work builds trust fast. Which project do you want him to see first?",
+      "facts": []
+    },
+    {
+      "id": "dev-s10:t08",
+      "speaker": "user",
+      "text": "Probably the bike-share one. I analyzed a public bike-share dataset in SQL for my portfolio, and the main thing I found was that weekend rides ran forty percent longer than weekday rides.",
+      "facts": [
+        "dev-f03"
+      ]
+    },
+    {
+      "id": "dev-s10:t09",
+      "speaker": "wren",
+      "text": "That metric sticks in the mind because it tells a simple story. How do you want to ask him for the referral itself?",
+      "facts": []
+    },
+    {
+      "id": "dev-s10:t10",
+      "speaker": "user",
+      "text": "I'll probably just ask if he has ten minutes for a quick phone catch-up first, and then bring up the open role naturally if it feels right.",
+      "facts": []
+    },
+    {
+      "id": "dev-s10:t11",
+      "speaker": "wren",
+      "text": "Keeping it low-pressure makes it easy for him to say yes. When do you think you will send that note?",
+      "facts": []
+    },
+    {
+      "id": "dev-s10:t12",
+      "speaker": "user",
+      "text": "I'm planning to sit down and type it out right after we wrap up today.",
+      "facts": []
+    },
+    {
+      "id": "dev-s10:t13",
+      "speaker": "wren",
+      "text": "Getting it out the door will feel good. Do you want to run through anything else before you write it?",
+      "facts": []
+    },
+    {
+      "id": "dev-s10:t14",
+      "speaker": "user",
+      "text": "No, I think I'm good to go. Talking it through gave me the nudge I needed.",
+      "facts": []
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+{
+  "id": "dev-s01",
+  "persona": "dev",
+  "date": "2026-09-02",
+  "mode": "checkin",
+  "generator": "gemini-3.8-flash",
+  "turns": [
+    {
+      "id": "dev-s01:t01",
+      "speaker": "wren",
+      "text": "Hi Dev. I am Wren, and I am glad you are here. How are you feeling about starting out today?",
+      "facts": []
+    },
+    {
+      "id": "dev-s01:t02",
+      "speaker": "user",
+      "text": "Hey Wren. A little nervous, to be honest. I taught high school math for seven years, but I'm trying to make the jump into data analyst work now.",
+      "facts": []
+    },
+    {
+      "id": "dev-s01:t03",
+      "speaker": "wren",
+      "text": "Seven years in the classroom is serious work. What made you want to move toward data?",
+      "facts": []
+    },
+    {
+      "id": "dev-s01:t04",
+      "speaker": "user",
+      "text": "I guess I've always loved digging into numbers and finding patterns, not just teaching formulas. So over the past year, I've been teaching myself SQL and Python after school.",
+      "facts": []
+    },
+    {
+      "id": "dev-s01:t05",
+      "speaker": "wren",
+      "text": "That takes real discipline after a full day of teaching. Did you get to work with data much in your school role?",
+      "facts": []
+    },
+    {
+      "id": "dev-s01:t06",
+      "speaker": "user",
+      "text": "Yeah, actually. I built a grading dashboard in Excel that tracked quiz scores for a hundred and twenty students, and it flagged whoever was falling behind. It was kind of my first taste of real analytics.",
+      "facts": [
+        "dev-f01"
+      ]
+    },
+    {
+      "id": "dev-s01:t07",
+      "speaker": "wren",
+      "text": "That is a real data project. How did you use those flags during the term?",
+      "facts": []
+    },
+    {
+      "id": "dev-s01:t08",
+      "speaker": "user",
+      "text": "It let me pull kids aside for extra review before unit exams instead of waiting until report cards came out. Parents really appreciated it too, honestly.",
+      "facts": []
+    },
+    {
+      "id": "dev-s01:t09",
+      "speaker": "wren",
+      "text": "You solved a clear problem with data. Does framing your classroom projects as analyst experience feel strange to you?",
+      "facts": []
+    },
+    {
+      "id": "dev-s01:t10",
+      "speaker": "user",
+      "text": "A bit, yeah. I worry hiring managers will just look at my resume and think, oh, he's just a teacher, not a real data person.",
+      "facts": []
+    },
+    {
+      "id": "dev-s01:t11",
+      "speaker": "wren",
+      "text": "Teaching involves communication and problem solving, which analysts need every day. What parts of the transition feel the toughest right now?",
+      "facts": []
+    },
+    {
+      "id": "dev-s01:t12",
+      "speaker": "user",
+      "text": "Mostly just translating what I did into interview answers that sound crisp. I tend to wander off into teaching anecdotes if I'm not careful.",
+      "facts": []
+    },
+    {
+      "id": "dev-s01:t13",
+      "speaker": "wren",
+      "text": "We will practice keeping your answers tight and focused. Would you like to map out a few core stories next time?",
+      "facts": []
+    },
+    {
+      "id": "dev-s01:t14",
+      "speaker": "user",
+      "text": "That sounds like a great plan. I think that Excel dashboard story could be a solid starting point.",
+      "facts": []
+    },
+    {
+      "id": "dev-s01:t15",
+      "speaker": "wren",
+      "text": "It definitely has teeth. How are your energy levels holding up after today's chat?",
+      "facts": []
+    },
+    {
+      "id": "dev-s01:t16",
+      "speaker": "user",
+      "text": "Pretty good! It's just nice to know I don't have to figure all this interview prep out alone.",
+      "facts": []
+    }
+  ]
+}

@@ -1,0 +1,111 @@
+{
+  "id": "sam-s02",
+  "persona": "sam",
+  "date": "2026-09-04",
+  "mode": "mock",
+  "generator": "gemini-3.7-flash",
+  "turns": [
+    {
+      "id": "sam-s02:t01",
+      "speaker": "wren",
+      "text": "Hey Sam. Ready to run that customer success screen mock today?",
+      "facts": []
+    },
+    {
+      "id": "sam-s02:t02",
+      "speaker": "user",
+      "text": "Yeah, let's do it. A little jittery, but I'm ready.",
+      "facts": []
+    },
+    {
+      "id": "sam-s02:t03",
+      "speaker": "wren",
+      "text": "I'm stepping into the interviewer chair now. Thanks for taking the time, Sam; to kick things off, why are you interested in our company?",
+      "facts": []
+    },
+    {
+      "id": "sam-s02:t04",
+      "speaker": "user",
+      "text": "Well, um, I really love your mission and fast growth. It just seems like an amazing culture where I can collaborate and bring real value to your customers.",
+      "facts": []
+    },
+    {
+      "id": "sam-s02:t05",
+      "speaker": "wren",
+      "text": "Understood. Can you tell me about a time you improved an internal process?",
+      "facts": []
+    },
+    {
+      "id": "sam-s02:t06",
+      "speaker": "user",
+      "text": "Sure. At the store, training was pretty chaotic, so I made an onboarding checklist for our team. It ended up cutting our new-hire ramp time from six weeks down to three.",
+      "facts": [
+        "sam-f03"
+      ]
+    },
+    {
+      "id": "sam-s02:t07",
+      "speaker": "wren",
+      "text": "That is solid context. How do you usually handle keeping accounts engaged over the long haul?",
+      "facts": []
+    },
+    {
+      "id": "sam-s02:t08",
+      "speaker": "user",
+      "text": "I check in proactively before minor problems balloon, and I listen to what people actually deal with every day instead of guessing.",
+      "facts": []
+    },
+    {
+      "id": "sam-s02:t09",
+      "speaker": "wren",
+      "text": "And scene. Stepping out of the interviewer role now. How did that round feel?",
+      "facts": []
+    },
+    {
+      "id": "sam-s02:t10",
+      "speaker": "user",
+      "text": "Felt okay overall, I think, though maybe my opening answer was a little weak.",
+      "facts": []
+    },
+    {
+      "id": "sam-s02:t11",
+      "speaker": "wren",
+      "text": "Your stories are really strong, but your answer on why this company was generic. Did you notice where it drifted into buzzwords?",
+      "facts": [
+        "sam-f11"
+      ]
+    },
+    {
+      "id": "sam-s02:t12",
+      "speaker": "user",
+      "text": "Yeah, definitely. Whenever I'm telling concrete stories I'm fine, but my answers to why this company end up so generic and flat.",
+      "facts": [
+        "sam-f11"
+      ]
+    },
+    {
+      "id": "sam-s02:t13",
+      "speaker": "wren",
+      "text": "Try anchoring it to one specific product update or workflow they just released. Want to give that question another try right now?",
+      "facts": []
+    },
+    {
+      "id": "sam-s02:t14",
+      "speaker": "user",
+      "text": "Honestly, let's pause there for today. I've gotta head out for my shift in twenty minutes anyway.",
+      "facts": []
+    },
+    {
+      "id": "sam-s02:t15",
+      "speaker": "wren",
+      "text": "Good call. Go grab some water, and want to practice that one tomorrow before your shift?",
+      "facts": []
+    },
+    {
+      "id": "sam-s02:t16",
+      "speaker": "user",
+      "text": "Yeah, let's do tomorrow. Talk then, Wren.",
+      "facts": []
+    }
+  ]
+}

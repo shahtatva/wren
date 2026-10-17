@@ -1,0 +1,109 @@
+{
+  "id": "dev-s07",
+  "persona": "dev",
+  "date": "2026-09-30",
+  "mode": "checkin",
+  "generator": "gemini-3.8-flash",
+  "turns": [
+    {
+      "id": "dev-s07:t01",
+      "speaker": "wren",
+      "text": "Hi Dev, good to see you. How are you holding up today?",
+      "facts": []
+    },
+    {
+      "id": "dev-s07:t02",
+      "speaker": "user",
+      "text": "Hey Wren. Pretty good, honestly. Just making some coffee and trying to stay on top of things.",
+      "facts": []
+    },
+    {
+      "id": "dev-s07:t03",
+      "speaker": "wren",
+      "text": "Coffee sounds well-deserved. How are things looking with your take-home assignment?",
+      "facts": []
+    },
+    {
+      "id": "dev-s07:t04",
+      "speaker": "user",
+      "text": "Oh, right, good news on that front. Vireline actually pushed back the deadline for the SQL take-home to Wednesday, October seventh. So I have a little extra room to breathe.",
+      "facts": [
+        "dev-f07"
+      ]
+    },
+    {
+      "id": "dev-s07:t05",
+      "speaker": "wren",
+      "text": "That gives you some solid breathing room. Have you started digging into their dataset yet?",
+      "facts": []
+    },
+    {
+      "id": "dev-s07:t06",
+      "speaker": "user",
+      "text": "Yeah, I sketched out the main queries yesterday. It's patient encounter data, so there are a lot of tricky joins, but it's coming along.",
+      "facts": []
+    },
+    {
+      "id": "dev-s07:t07",
+      "speaker": "wren",
+      "text": "You handled those joins cleanly when we practiced Ottergrove. What else has been running through your head this week?",
+      "facts": []
+    },
+    {
+      "id": "dev-s07:t08",
+      "speaker": "user",
+      "text": "Well, I was reviewing my story bank because I want my behavioral answers to stay sharp. And something occurred to me about our very first session.",
+      "facts": []
+    },
+    {
+      "id": "dev-s07:t09",
+      "speaker": "wren",
+      "text": "I remember that session well. What popped up?",
+      "facts": []
+    },
+    {
+      "id": "dev-s07:t10",
+      "speaker": "user",
+      "text": "I told you back then that I built my grading dashboard in Excel, but that wasn't right. It was actually built in Google Sheets using Apps Script to automate pulling the test scores.",
+      "facts": [
+        "dev-f02"
+      ]
+    },
+    {
+      "id": "dev-s07:t11",
+      "speaker": "wren",
+      "text": "That's a neat detail because Apps Script is real code. Does framing it that way change how you want to pitch it?",
+      "facts": []
+    },
+    {
+      "id": "dev-s07:t12",
+      "speaker": "user",
+      "text": "Yeah, exactly. In Excel it sounds like just formulas, but with Apps Script, I had to write JavaScript functions to handle the batch processing across periods.",
+      "facts": []
+    },
+    {
+      "id": "dev-s07:t13",
+      "speaker": "wren",
+      "text": "It shows initiative and coding logic right inside the school. Do you want to run through that explanation once out loud?",
+      "facts": []
+    },
+    {
+      "id": "dev-s07:t14",
+      "speaker": "user",
+      "text": "I think I'd rather save the rehearsal for our next mock round, if that's okay. Today I just kind of wanted to catch my breath.",
+      "facts": []
+    },
+    {
+      "id": "dev-s07:t15",
+      "speaker": "wren",
+      "text": "Catching your breath is part of the work. What's on your agenda for the rest of the afternoon?",
+      "facts": []
+    },
+    {
+      "id": "dev-s07:t16",
+      "speaker": "user",
+      "text": "I'm going to take a long walk, maybe finish one query, and call it an early night.",
+      "facts": []
+    }
+  ]
+}

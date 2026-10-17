@@ -1,0 +1,109 @@
+{
+  "id": "sam-s03",
+  "persona": "sam",
+  "date": "2026-09-09",
+  "mode": "checkin",
+  "generator": "gemini-3.7-flash",
+  "turns": [
+    {
+      "id": "sam-s03:t01",
+      "speaker": "wren",
+      "text": "Hey Sam. Good to hear your voice today. How are you feeling after that second round last week?",
+      "facts": []
+    },
+    {
+      "id": "sam-s03:t02",
+      "speaker": "user",
+      "text": "Hey Wren. Honestly, pretty bummed out. Vantlow Software sent a rejection email yesterday, right after my second interview with them.",
+      "facts": [
+        "sam-f08"
+      ]
+    },
+    {
+      "id": "sam-s03:t03",
+      "speaker": "wren",
+      "text": "Ah, I am really sorry, Sam. That stings after making it past two rounds. Do you want to vent about it, or would you rather dig into what happened?",
+      "facts": []
+    },
+    {
+      "id": "sam-s03:t04",
+      "speaker": "user",
+      "text": "A bit of both, maybe. It just makes me spiral a little, you know? I spent six years running a shop, and now I keep worrying that hiring teams look at my retail experience and think it just won't count toward real customer success roles.",
+      "facts": [
+        "sam-f15"
+      ]
+    },
+    {
+      "id": "sam-s03:t05",
+      "speaker": "wren",
+      "text": "That worry makes total sense when a rejection hits. But turning around an upset shopper is retention work, plain and simple. Did they give you any specific notes in the email, or was it the usual template?",
+      "facts": []
+    },
+    {
+      "id": "sam-s03:t06",
+      "speaker": "user",
+      "text": "Total copy-paste template. Just that they decided to move forward with candidates whose backgrounds aligned more closely with the position. Which of course made my head instantly jump to my store work being the problem.",
+      "facts": []
+    },
+    {
+      "id": "sam-s03:t07",
+      "speaker": "wren",
+      "text": "Canned emails leave you guessing, and the brain always fills in the worst answer. Remember that wedding order story you told me, where you saved the whole day? How does that story feel when you say it out loud?",
+      "facts": []
+    },
+    {
+      "id": "sam-s03:t08",
+      "speaker": "user",
+      "text": "That story feels natural because I actually lived it and solved the problem. But when they asked about things like churn metrics and SaaS onboarding, I felt like an impostor stumbling through vocab words.",
+      "facts": []
+    },
+    {
+      "id": "sam-s03:t09",
+      "speaker": "wren",
+      "text": "Translating the vocabulary takes practice, but the core muscle is identical. You saved accounts long before you heard the word churn. What if you asked a friend in tech to do a quick sanity check on how you frame that transition?",
+      "facts": []
+    },
+    {
+      "id": "sam-s03:t10",
+      "speaker": "user",
+      "text": "That is probably smart. My old college roommate works in software support, so maybe she'd let me bounce a couple of answers off her without me feeling so judged.",
+      "facts": []
+    },
+    {
+      "id": "sam-s03:t11",
+      "speaker": "wren",
+      "text": "She sounds like a great person to loop in. Talking to a friendly face takes some of the pressure off. How is the store treating you this week on top of everything else?",
+      "facts": []
+    },
+    {
+      "id": "sam-s03:t12",
+      "speaker": "user",
+      "text": "Exhausting, honestly. We had a late inventory count on Monday night, so I'm running on pure caffeine and trying to squeeze in applications before opening.",
+      "facts": []
+    },
+    {
+      "id": "sam-s03:t13",
+      "speaker": "wren",
+      "text": "Carrying a full-time store schedule while hunting for a new career is heavy lifting. Please be gentle with yourself tonight. Can you take this evening completely off from job boards?",
+      "facts": []
+    },
+    {
+      "id": "sam-s03:t14",
+      "speaker": "user",
+      "text": "Yeah, I really think I need that. Some takeout, a bad movie, and no looking at job listings until tomorrow.",
+      "facts": []
+    },
+    {
+      "id": "sam-s03:t15",
+      "speaker": "wren",
+      "text": "That sounds like the right call. Rest up tonight, and we can pick up with fresh eyes tomorrow. Ready to sign off for now?",
+      "facts": []
+    },
+    {
+      "id": "sam-s03:t16",
+      "speaker": "user",
+      "text": "Ready. Thanks for keeping me grounded, Wren. Talk to you soon.",
+      "facts": []
+    }
+  ]
+}

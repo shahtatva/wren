@@ -1,0 +1,121 @@
+{
+  "id": "maya-s05",
+  "persona": "maya",
+  "date": "2026-09-22",
+  "mode": "checkin",
+  "generator": "gemini-3.8-flash",
+  "turns": [
+    {
+      "id": "maya-s05:t01",
+      "speaker": "wren",
+      "text": "Hey Maya, good to see you again. How's your week treating you?",
+      "facts": []
+    },
+    {
+      "id": "maya-s05:t02",
+      "speaker": "user",
+      "text": "Hey Wren! Doing pretty well, actually. Drinking way too much iced coffee today, but I've got my calendar open and I'm trying to line everything up.",
+      "facts": []
+    },
+    {
+      "id": "maya-s05:t03",
+      "speaker": "wren",
+      "text": "Sounds like a busy day with the calendar out. What's landing on your plate first?",
+      "facts": []
+    },
+    {
+      "id": "maya-s05:t04",
+      "speaker": "user",
+      "text": "Well, Quillbase got back to me with a take-home assignment. They want me to put together a thirty-sixty-ninety day plan, and it's due on October second.",
+      "facts": [
+        "maya-f13"
+      ]
+    },
+    {
+      "id": "maya-s05:t05",
+      "speaker": "wren",
+      "text": "A plan for the first three months is a solid exercise. How are you feeling about mapping that out?",
+      "facts": []
+    },
+    {
+      "id": "maya-s05:t06",
+      "speaker": "user",
+      "text": "A little nervous just because there are so many ways to structure it, but I think breaking it down into pipeline building and tool onboarding will make sense. I'll probably draft it over the weekend.",
+      "facts": []
+    },
+    {
+      "id": "maya-s05:t07",
+      "speaker": "wren",
+      "text": "Focusing on pipeline ramp-up is a clean way to frame it. Did any other news come in?",
+      "facts": []
+    },
+    {
+      "id": "maya-s05:t08",
+      "speaker": "user",
+      "text": "Yeah! Velloway Analytics reached out to set up a recruiter screen. We ended up booking it for Thursday, October eighth at two in the afternoon.",
+      "facts": [
+        "maya-f09"
+      ]
+    },
+    {
+      "id": "maya-s05:t09",
+      "speaker": "wren",
+      "text": "That's good momentum. It gives you plenty of time to get ready for them, too. Have you had a chance to look at their site yet?",
+      "facts": []
+    },
+    {
+      "id": "maya-s05:t10",
+      "speaker": "user",
+      "text": "A little bit, yeah. It seems right up my alley with the data background, so I'm excited.",
+      "facts": []
+    },
+    {
+      "id": "maya-s05:t11",
+      "speaker": "wren",
+      "text": "Your degree connects straight to what they do. Do you want to do a quick warm-up on your pitch today, or keep this strictly to logistics?",
+      "facts": []
+    },
+    {
+      "id": "maya-s05:t12",
+      "speaker": "user",
+      "text": "Let's stick to logistics today. My brain's a bit scattered with scheduling, honestly, so I don't think I have the stamina for a mock drill right now.",
+      "facts": []
+    },
+    {
+      "id": "maya-s05:t13",
+      "speaker": "wren",
+      "text": "Fair enough. Pacing yourself is just as important as doing mock reps. How are your stress levels holding up overall?",
+      "facts": []
+    },
+    {
+      "id": "maya-s05:t14",
+      "speaker": "user",
+      "text": "Much better than last week when that Corvid rejection stung. Having two active leads definitely takes some weight off my shoulders.",
+      "facts": []
+    },
+    {
+      "id": "maya-s05:t15",
+      "speaker": "wren",
+      "text": "It helps when the pipeline moves again. Should we block out time early next week to look at that Quillbase prompt together?",
+      "facts": []
+    },
+    {
+      "id": "maya-s05:t16",
+      "speaker": "user",
+      "text": "That would be awesome. Let's do that early next week before it's due. Thanks for keeping me grounded today, Wren.",
+      "facts": []
+    },
+    {
+      "id": "maya-s05:t17",
+      "speaker": "wren",
+      "text": "I'd like that. Rest up tonight, and do you want to touch base on Tuesday?",
+      "facts": []
+    },
+    {
+      "id": "maya-s05:t18",
+      "speaker": "user",
+      "text": "Tuesday works perfectly. Talk soon, Wren!",
+      "facts": []
+    }
+  ]
+}

@@ -1,0 +1,109 @@
+{
+  "id": "maya-s01",
+  "persona": "maya",
+  "date": "2026-09-01",
+  "mode": "checkin",
+  "generator": "gemini-3.8-flash",
+  "turns": [
+    {
+      "id": "maya-s01:t01",
+      "speaker": "wren",
+      "text": "Hi Maya, I'm Wren. I'm here to help you practice and stay steady through your job search. How are you feeling as we get started?",
+      "facts": []
+    },
+    {
+      "id": "maya-s01:t02",
+      "speaker": "user",
+      "text": "Hey Wren. A little overwhelmed, to be honest. I finished school in May and I'm aiming for tech sales, specifically business development roles at SaaS companies, so it's a lot of applying right now.",
+      "facts": []
+    },
+    {
+      "id": "maya-s01:t03",
+      "speaker": "wren",
+      "text": "That transition is a big lift. What is one experience you are most eager to talk about in interviews?",
+      "facts": []
+    },
+    {
+      "id": "maya-s01:t04",
+      "speaker": "user",
+      "text": "Probably something from my student consulting club. I actually led a group of five people on a project for a nonprofit, and we managed to cut down their donor churn by twelve percent.",
+      "facts": [
+        "maya-f01"
+      ]
+    },
+    {
+      "id": "maya-s01:t05",
+      "speaker": "wren",
+      "text": "Leading a team to a twelve percent drop is a concrete result. What was the change you made that kept those donors around?",
+      "facts": []
+    },
+    {
+      "id": "maya-s01:t06",
+      "speaker": "user",
+      "text": "Well, we realized they weren't getting touched after the first donation. So we built an outreach sequence with automated check-ins and personal thank-you calls, which kept them engaged.",
+      "facts": []
+    },
+    {
+      "id": "maya-s01:t07",
+      "speaker": "wren",
+      "text": "That lines up directly with what outbound reps do. How do you feel when you share that story in front of people?",
+      "facts": []
+    },
+    {
+      "id": "maya-s01:t08",
+      "speaker": "user",
+      "text": "If it's just one person, I feel pretty confident and normal. It flows well enough when it's a one-on-one chat.",
+      "facts": []
+    },
+    {
+      "id": "maya-s01:t09",
+      "speaker": "wren",
+      "text": "One-on-one conversation suits you. What format feels harder to handle?",
+      "facts": []
+    },
+    {
+      "id": "maya-s01:t10",
+      "speaker": "user",
+      "text": "Panel interviews make me so nervous. Whenever there are more than two people in the room listening to me, my mind just goes completely blank.",
+      "facts": [
+        "maya-f15"
+      ]
+    },
+    {
+      "id": "maya-s01:t11",
+      "speaker": "wren",
+      "text": "Having multiple eyes on you raises the stakes fast. When your mind blanks out, what happens next?",
+      "facts": []
+    },
+    {
+      "id": "maya-s01:t12",
+      "speaker": "user",
+      "text": "I usually freeze for a second, panic, and then start rambling because silence feels awful. Then I totally lose the point I was trying to make.",
+      "facts": []
+    },
+    {
+      "id": "maya-s01:t13",
+      "speaker": "wren",
+      "text": "That silence can feel loud, but taking a breath gives you room to think. Would you like to practice handling a panel setup together soon?",
+      "facts": []
+    },
+    {
+      "id": "maya-s01:t14",
+      "speaker": "user",
+      "text": "Yeah, that'd actually be really good. I definitely need to get comfortable with that pressure before real ones happen.",
+      "facts": []
+    },
+    {
+      "id": "maya-s01:t15",
+      "speaker": "wren",
+      "text": "We will build up to it together so it feels routine. Do you want to wrap up our check-in here for today?",
+      "facts": []
+    },
+    {
+      "id": "maya-s01:t16",
+      "speaker": "user",
+      "text": "Yeah, let's call it here. Thanks, Wren, this was a nice start.",
+      "facts": []
+    }
+  ]
+}

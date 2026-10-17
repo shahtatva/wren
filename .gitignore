@@ -20,3 +20,9 @@ supabase/.temp/
 # OS
 .DS_Store
 Thumbs.db
+
+# Personal session logs (also covers voice/logs/, the planned per-turn context log)
+logs/
+
+# Eval harness cache (LLM outputs, embeddings, tokenizer files)
+evals/.cache/

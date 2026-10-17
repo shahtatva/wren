@@ -1,0 +1,14 @@
+{
+  "id": "ana",
+  "name": "Ana Reyes",
+  "profile": "Bootcamp graduate targeting junior analyst roles.",
+  "facts": [
+    {"id": "ana-f01", "text": "Oakridge Labs phone screen is on Tuesday October 6", "kind": "episode"},
+    {"id": "ana-f02", "text": "Oakridge Labs phone screen moved to Thursday October 8", "kind": "episode", "supersedes": "ana-f01"},
+    {"id": "ana-f03", "text": "Built a churn dashboard for a food bank during the bootcamp", "kind": "story"}
+  ],
+  "sessions": [
+    {"id": "ana-s01", "date": "2026-10-01", "mode": "checkin", "outline": "Ana mentions the Oakridge screen and her food bank dashboard.", "facts": ["ana-f01", "ana-f03"]},
+    {"id": "ana-s02", "date": "2026-10-05", "mode": "checkin", "outline": "Ana says the Oakridge screen moved.", "facts": ["ana-f02"]}
+  ]
+}

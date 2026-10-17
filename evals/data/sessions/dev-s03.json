@@ -1,0 +1,109 @@
+{
+  "id": "dev-s03",
+  "persona": "dev",
+  "date": "2026-09-11",
+  "mode": "checkin",
+  "generator": "gemini-3.8-flash",
+  "turns": [
+    {
+      "id": "dev-s03:t01",
+      "speaker": "wren",
+      "text": "Hey Dev. Good to hear from you today. How are things going?",
+      "facts": []
+    },
+    {
+      "id": "dev-s03:t02",
+      "speaker": "user",
+      "text": "Hey Wren. Honestly, not that great today. I got some news yesterday afternoon.",
+      "facts": []
+    },
+    {
+      "id": "dev-s03:t03",
+      "speaker": "wren",
+      "text": "I'm listening. What came through?",
+      "facts": []
+    },
+    {
+      "id": "dev-s03:t04",
+      "speaker": "user",
+      "text": "Well, Tarnwell sent a rejection email after that technical screen I did. They aren't moving forward with me.",
+      "facts": [
+        "dev-f08"
+      ]
+    },
+    {
+      "id": "dev-s03:t05",
+      "speaker": "wren",
+      "text": "Ah, Dev. That stings after all the work you put in. How are you taking the news?",
+      "facts": []
+    },
+    {
+      "id": "dev-s03:t06",
+      "speaker": "user",
+      "text": "It's been really discouraging, to be honest. I was sitting on the couch last night just wondering if walking away from teaching was a huge mistake.",
+      "facts": [
+        "dev-f15"
+      ]
+    },
+    {
+      "id": "dev-s03:t07",
+      "speaker": "wren",
+      "text": "A rejection makes the whole leap feel heavy. What part of you is second-guessing the move?",
+      "facts": []
+    },
+    {
+      "id": "dev-s03:t08",
+      "speaker": "user",
+      "text": "I guess just comfort and certainty. In the classroom, I knew the routine, and out here I'm getting turned down after writing queries under pressure.",
+      "facts": []
+    },
+    {
+      "id": "dev-s03:t09",
+      "speaker": "wren",
+      "text": "Seven years of comfort is hard to walk away from. You left because you wanted to solve bigger problems with data. Does that still pull at you?",
+      "facts": []
+    },
+    {
+      "id": "dev-s03:t10",
+      "speaker": "user",
+      "text": "It does, yeah. When I'm actually working on SQL problems or building something, I love it. It's just the rejection part that feels brutal.",
+      "facts": []
+    },
+    {
+      "id": "dev-s03:t11",
+      "speaker": "wren",
+      "text": "Job searches test everyone that way. Did Tarnwell give you any specific notes on the coding round?",
+      "facts": []
+    },
+    {
+      "id": "dev-s03:t12",
+      "speaker": "user",
+      "text": "Nope. Just the boilerplate form letter saying they had a competitive pool. It leaves you guessing.",
+      "facts": []
+    },
+    {
+      "id": "dev-s03:t13",
+      "speaker": "wren",
+      "text": "Those generic notes give you nothing to build on. Do you want to take a breather this weekend, or would looking at a practice problem help?",
+      "facts": []
+    },
+    {
+      "id": "dev-s03:t14",
+      "speaker": "user",
+      "text": "No coding this weekend, I think. A couple days away from the screen will probably clear my head.",
+      "facts": []
+    },
+    {
+      "id": "dev-s03:t15",
+      "speaker": "wren",
+      "text": "Stepping back is a wise move. Can you do something completely unrelated to the job hunt tomorrow?",
+      "facts": []
+    },
+    {
+      "id": "dev-s03:t16",
+      "speaker": "user",
+      "text": "Yeah, definitely. I might go for a long hike and catch up with a friend. Thanks for listening, Wren.",
+      "facts": []
+    }
+  ]
+}

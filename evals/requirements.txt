@@ -1,0 +1,2 @@
+-r ../voice/requirements-dev.txt
+tiktoken==0.14.0

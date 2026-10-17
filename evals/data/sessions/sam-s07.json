@@ -1,0 +1,109 @@
+{
+  "id": "sam-s07",
+  "persona": "sam",
+  "date": "2026-10-01",
+  "mode": "checkin",
+  "generator": "gemini-3.7-flash",
+  "turns": [
+    {
+      "id": "sam-s07:t01",
+      "speaker": "wren",
+      "text": "Hey Sam, good to hear from you. How are things holding up at the shop today?",
+      "facts": []
+    },
+    {
+      "id": "sam-s07:t02",
+      "speaker": "user",
+      "text": "Hey Wren. Oh, crazy as usual on a Thursday afternoon, but hanging in there. Actually got an email earlier from Pellwick, and they had to push my final round back to Wednesday, October fourteenth.",
+      "facts": [
+        "sam-f07"
+      ]
+    },
+    {
+      "id": "sam-s07:t03",
+      "speaker": "wren",
+      "text": "That gives you almost two extra weeks to breathe. How are you feeling about having that extra cushion?",
+      "facts": []
+    },
+    {
+      "id": "sam-s07:t04",
+      "speaker": "user",
+      "text": "Honestly, mixed feelings. Part of me just wanted to get it over with, but it's probably good. It gives me a minute to sharpen some of my examples without rushing.",
+      "facts": []
+    },
+    {
+      "id": "sam-s07:t05",
+      "speaker": "wren",
+      "text": "Extra prep time is a gift if we use it gently. Is there a specific story you've been turning over in your head?",
+      "facts": []
+    },
+    {
+      "id": "sam-s07:t06",
+      "speaker": "user",
+      "text": "Yeah, the lost wedding order one. Remember how before I just said she walked out happy? Well, I realized I left out the best part. I managed to track down a full replacement within two hours, and after that, she became a regular who actually wrote us a glowing five-star review.",
+      "facts": [
+        "sam-f02"
+      ]
+    },
+    {
+      "id": "sam-s07:t07",
+      "speaker": "wren",
+      "text": "That ending shows the lasting impact instead of just a quick save. What made you remember that piece of it today?",
+      "facts": []
+    },
+    {
+      "id": "sam-s07:t08",
+      "speaker": "user",
+      "text": "She actually came by the store this morning for an anniversary gift. It hit me that customer success isn't just putting out the fire, it's turning a mess into long-term trust.",
+      "facts": []
+    },
+    {
+      "id": "sam-s07:t09",
+      "speaker": "wren",
+      "text": "That is the heart of retention right there. Do you want to try framing that takeaway in one sentence?",
+      "facts": []
+    },
+    {
+      "id": "sam-s07:t10",
+      "speaker": "user",
+      "text": "Sure. Something like, resolving a crisis quickly can build deeper loyalty than if nothing went wrong in the first place.",
+      "facts": []
+    },
+    {
+      "id": "sam-s07:t11",
+      "speaker": "wren",
+      "text": "That lands clean and confident. How does it feel saying that out loud?",
+      "facts": []
+    },
+    {
+      "id": "sam-s07:t12",
+      "speaker": "user",
+      "text": "Way better, honestly. It connects the retail chaos directly to retention and client health, which is what Pellwick cares about.",
+      "facts": []
+    },
+    {
+      "id": "sam-s07:t13",
+      "speaker": "wren",
+      "text": "It really bridges your past work and where you're heading. Should we wrap up here so you can get some rest tonight?",
+      "facts": []
+    },
+    {
+      "id": "sam-s07:t14",
+      "speaker": "user",
+      "text": "Yeah, definitely. My feet are killing me anyway, so I'm gonna go collapse on the couch. Talk soon, Wren.",
+      "facts": []
+    },
+    {
+      "id": "sam-s07:t15",
+      "speaker": "wren",
+      "text": "Rest up, Sam. When would you like to hop back on to practice again?",
+      "facts": []
+    },
+    {
+      "id": "sam-s07:t16",
+      "speaker": "user",
+      "text": "Let's do Sunday afternoon if that works. Take care!",
+      "facts": []
+    }
+  ]
+}

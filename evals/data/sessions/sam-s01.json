@@ -1,0 +1,97 @@
+{
+  "id": "sam-s01",
+  "persona": "sam",
+  "date": "2026-09-01",
+  "mode": "checkin",
+  "generator": "gemini-3.7-flash",
+  "turns": [
+    {
+      "id": "sam-s01:t01",
+      "speaker": "wren",
+      "text": "Hi Sam, I'm Wren. It's really nice to meet you. How are you holding up today?",
+      "facts": []
+    },
+    {
+      "id": "sam-s01:t02",
+      "speaker": "user",
+      "text": "Hey Wren. Honestly, I'm pretty wiped out. Juggling a full-time schedule at the store while trying to hunt for jobs on the side is just exhausting.",
+      "facts": [
+        "sam-f14"
+      ]
+    },
+    {
+      "id": "sam-s01:t03",
+      "speaker": "wren",
+      "text": "That is a heavy load to carry. What made you decide to start looking for customer success roles right now?",
+      "facts": []
+    },
+    {
+      "id": "sam-s01:t04",
+      "speaker": "user",
+      "text": "Well, after running the retail shop for six years, I noticed my favorite part is solving problems for clients and keeping relationships intact, rather than just stocking shelves. Customer success just feels like the right fit.",
+      "facts": []
+    },
+    {
+      "id": "sam-s01:t05",
+      "speaker": "wren",
+      "text": "Six years is a lot of customer problems solved. Is there one situation you handled that really sticks with you?",
+      "facts": []
+    },
+    {
+      "id": "sam-s01:t06",
+      "speaker": "user",
+      "text": "Oh, definitely. We had this huge crisis once where an order for an entire wedding party just vanished right before the event.",
+      "facts": []
+    },
+    {
+      "id": "sam-s01:t07",
+      "speaker": "wren",
+      "text": "That sounds terrifying for everyone involved. How did you step in?",
+      "facts": []
+    },
+    {
+      "id": "sam-s01:t08",
+      "speaker": "user",
+      "text": "The bride was in tears and shouting. I took her aside to get her calm, and then I called around our sister branches and got an exact replacement ready within two hours, so she walked away completely happy.",
+      "facts": [
+        "sam-f01"
+      ]
+    },
+    {
+      "id": "sam-s01:t09",
+      "speaker": "wren",
+      "text": "Turning someone from panic to relief in two hours is huge. Did you know right away you wanted to use that in interviews?",
+      "facts": []
+    },
+    {
+      "id": "sam-s01:t10",
+      "speaker": "user",
+      "text": "I hoped to, yeah. I guess I was just a little worried tech interviewers wouldn't care about a retail crisis.",
+      "facts": []
+    },
+    {
+      "id": "sam-s01:t11",
+      "speaker": "wren",
+      "text": "De-escalation and fast turnarounds matter everywhere. Want to practice tightening that story into a solid behavioral answer next time?",
+      "facts": []
+    },
+    {
+      "id": "sam-s01:t12",
+      "speaker": "user",
+      "text": "Yeah, I'd really like that. Rehearsing it out loud will probably help me keep it focused.",
+      "facts": []
+    },
+    {
+      "id": "sam-s01:t13",
+      "speaker": "wren",
+      "text": "We will get it dialed in. For now, since you are so worn down from work, can you take the rest of the evening off?",
+      "facts": []
+    },
+    {
+      "id": "sam-s01:t14",
+      "speaker": "user",
+      "text": "Oh, absolutely. Dinner, couch, and straight to sleep. Thanks, Wren.",
+      "facts": []
+    }
+  ]
+}

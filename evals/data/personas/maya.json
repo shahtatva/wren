@@ -1,0 +1,37 @@
+{
+  "id": "maya",
+  "name": "Maya Okafor",
+  "profile": "Maya (she/her) finished an MS in Information Management in May 2026 and is targeting business development rep roles at SaaS companies.",
+  "facts": [
+    {"id": "maya-f01", "kind": "story", "text": "Led a five-person consulting-club project that cut a nonprofit's donor churn by 12 percent"},
+    {"id": "maya-f02", "kind": "story", "text": "The consulting-club result was actually a 15 percent drop in donor churn once the final quarter's data came in", "supersedes": "maya-f01"},
+    {"id": "maya-f03", "kind": "story", "text": "Cold-called 40 alumni in one week to fill a career-fair sponsor gap and landed three sponsors"},
+    {"id": "maya-f04", "kind": "story", "text": "As campus IT help desk lead, calmed an angry professor by walking them through a live data-recovery fix"},
+    {"id": "maya-f05", "kind": "story", "text": "Built a Tableau dashboard of library study-room bookings that the library still uses"},
+    {"id": "maya-f06", "kind": "feedback", "text": "Rambles on 'tell me about yourself', running past two minutes"},
+    {"id": "maya-f07", "kind": "feedback", "text": "Her openers land when she leads with a number"},
+    {"id": "maya-f08", "kind": "feedback", "text": "Forgets to ask the interviewer questions at the end"},
+    {"id": "maya-f09", "kind": "episode", "text": "Velloway Analytics recruiter screen booked for Thursday October 8 at 2pm"},
+    {"id": "maya-f10", "kind": "episode", "text": "Velloway Analytics moved the recruiter screen to Friday October 9 at 11am", "supersedes": "maya-f09"},
+    {"id": "maya-f11", "kind": "episode", "text": "Corvid Labs rejected her for the SDR role after the hiring-manager round"},
+    {"id": "maya-f12", "kind": "episode", "text": "A Corvid Labs recruiter reached out about a new BDR team opening in November", "supersedes": "maya-f11"},
+    {"id": "maya-f13", "kind": "episode", "text": "Quillbase sent a take-home: a 30-60-90 day plan due October 2"},
+    {"id": "maya-f14", "kind": "episode", "text": "Tessellate final-round panel on Monday October 19 with four interviewers"},
+    {"id": "maya-f15", "kind": "vibe", "text": "Gets nervous before panel interviews; her mind goes blank with more than two people in the room"},
+    {"id": "maya-f16", "kind": "vibe", "text": "Felt flat and discouraged the day after the Corvid rejection"},
+    {"id": "maya-f17", "kind": "vibe", "text": "Felt energized after a mock where her opener landed"},
+    {"id": "maya-f18", "kind": "episode", "text": "Wants a referral at Tessellate and knows a classmate there, Priya"}
+  ],
+  "sessions": [
+    {"id": "maya-s01", "date": "2026-09-01", "mode": "checkin", "outline": "First session. Maya introduces her search, tells the consulting-club story, and admits panels make her nervous.", "facts": ["maya-f01", "maya-f15"]},
+    {"id": "maya-s02", "date": "2026-09-04", "mode": "mock", "outline": "Mock BDR screen. Her 'tell me about yourself' rambles. She tells the alumni cold-calling story. Wren debriefs.", "facts": ["maya-f06", "maya-f03"]},
+    {"id": "maya-s03", "date": "2026-09-10", "mode": "checkin", "outline": "Corvid Labs rejected her after the hiring-manager round. She feels flat.", "facts": ["maya-f11", "maya-f16"]},
+    {"id": "maya-s04", "date": "2026-09-15", "mode": "mock", "outline": "Mock with a hiring-manager persona. She tells the help desk story and opens with a number, which lands. She feels energized.", "facts": ["maya-f04", "maya-f07", "maya-f17"]},
+    {"id": "maya-s05", "date": "2026-09-22", "mode": "checkin", "outline": "Logistics: the Quillbase take-home and a newly booked Velloway screen.", "facts": ["maya-f13", "maya-f09"]},
+    {"id": "maya-s06", "date": "2026-09-29", "mode": "mock", "outline": "Mock for Quillbase. She tells the Tableau dashboard story and forgets to ask questions at the end.", "facts": ["maya-f05", "maya-f08"]},
+    {"id": "maya-s07", "date": "2026-10-03", "mode": "checkin", "outline": "Velloway moved her screen. She also corrects the consulting-club number.", "facts": ["maya-f10", "maya-f02"]},
+    {"id": "maya-s08", "date": "2026-10-07", "mode": "checkin", "outline": "Surprise: Corvid Labs is back in touch about a different opening.", "facts": ["maya-f12"]},
+    {"id": "maya-s09", "date": "2026-10-10", "mode": "checkin", "outline": "The Tessellate final round is a four-person panel. Wren nudges her toward a referral and she names a classmate.", "facts": ["maya-f14", "maya-f18"]},
+    {"id": "maya-s10", "date": "2026-10-14", "mode": "mock", "outline": "Panel-style mock prep. She retells the alumni story and talks about panel nerves.", "facts": ["maya-f03", "maya-f15"]}
+  ]
+}

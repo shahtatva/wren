@@ -1,0 +1,119 @@
+{
+  "id": "maya-s08",
+  "persona": "maya",
+  "date": "2026-10-07",
+  "mode": "checkin",
+  "generator": "gemini-3.7-flash",
+  "turns": [
+    {
+      "id": "maya-s08:t01",
+      "speaker": "wren",
+      "text": "Hey Maya. Good to hear your voice today. How are things going on your end?",
+      "facts": []
+    },
+    {
+      "id": "maya-s08:t02",
+      "speaker": "user",
+      "text": "Hey Wren. Pretty good, actually. A little surreal, honestly, because something totally unexpected popped up.",
+      "facts": []
+    },
+    {
+      "id": "maya-s08:t03",
+      "speaker": "wren",
+      "text": "I'm curious already. What happened?",
+      "facts": []
+    },
+    {
+      "id": "maya-s08:t04",
+      "speaker": "user",
+      "text": "Well, you remember Corvid Labs, right? The company that dropped me after the hiring manager interview back in September?",
+      "facts": []
+    },
+    {
+      "id": "maya-s08:t05",
+      "speaker": "wren",
+      "text": "Of course I do. What came up with them?",
+      "facts": []
+    },
+    {
+      "id": "maya-s08:t06",
+      "speaker": "user",
+      "text": "So out of nowhere, a recruiter from Corvid Labs reached out about a new BDR team that's starting up in November.",
+      "facts": [
+        "maya-f12"
+      ]
+    },
+    {
+      "id": "maya-s08:t07",
+      "speaker": "wren",
+      "text": "That is quite a twist after last month. How did it feel when you saw their email?",
+      "facts": []
+    },
+    {
+      "id": "maya-s08:t08",
+      "speaker": "user",
+      "text": "Honestly, I stared at the screen for a minute to make sure I wasn't imagining it. I was pretty bummed after they passed on me, so it was a nice shock.",
+      "facts": []
+    },
+    {
+      "id": "maya-s08:t09",
+      "speaker": "wren",
+      "text": "Rejections always leave a mark, so that makes complete sense. Did they mention what the next steps look like?",
+      "facts": []
+    },
+    {
+      "id": "maya-s08:t10",
+      "speaker": "user",
+      "text": "She just asked if I'd be open to hopping on a quick call this Friday to discuss the scope and see if the timing works.",
+      "facts": []
+    },
+    {
+      "id": "maya-s08:t11",
+      "speaker": "wren",
+      "text": "That sounds promising. Did you send a reply yet?",
+      "facts": []
+    },
+    {
+      "id": "maya-s08:t12",
+      "speaker": "user",
+      "text": "Yep, I sent a note back about an hour ago saying I'd love to connect. I offered a couple of time slots.",
+      "facts": []
+    },
+    {
+      "id": "maya-s08:t13",
+      "speaker": "wren",
+      "text": "Good. You'll already know a bit about their product and team culture from last time. How are you feeling about the rest of your week?",
+      "facts": []
+    },
+    {
+      "id": "maya-s08:t14",
+      "speaker": "user",
+      "text": "Way lighter, to be honest. It's nice not feeling like everything is riding on just one or two conversations.",
+      "facts": []
+    },
+    {
+      "id": "maya-s08:t15",
+      "speaker": "wren",
+      "text": "Options definitely take some weight off your shoulders. Do you want to do any prep today, or just take in the good news?",
+      "facts": []
+    },
+    {
+      "id": "maya-s08:t16",
+      "speaker": "user",
+      "text": "I think I just want to soak it in today, maybe take a breather before getting back to interview prep tomorrow.",
+      "facts": []
+    },
+    {
+      "id": "maya-s08:t17",
+      "speaker": "wren",
+      "text": "A breather is well earned. What are you going to do with your afternoon?",
+      "facts": []
+    },
+    {
+      "id": "maya-s08:t18",
+      "speaker": "user",
+      "text": "I'm going to grab an iced coffee and take a nice walk in the park. Thanks for being excited with me, Wren.",
+      "facts": []
+    }
+  ]
+}

@@ -1,0 +1,109 @@
+{
+  "id": "sam-s09",
+  "persona": "sam",
+  "date": "2026-10-08",
+  "mode": "checkin",
+  "generator": "gemini-3.7-flash",
+  "turns": [
+    {
+      "id": "sam-s09:t01",
+      "speaker": "wren",
+      "text": "Hey Sam. Good to see you today. How is your energy holding up?",
+      "facts": []
+    },
+    {
+      "id": "sam-s09:t02",
+      "speaker": "user",
+      "text": "Honestly, not great. I'm just so exhausted from working full-time at the store while trying to run this whole job hunt on the side.",
+      "facts": [
+        "sam-f14"
+      ]
+    },
+    {
+      "id": "sam-s09:t03",
+      "speaker": "wren",
+      "text": "That is a heavy load to carry every single day. Would you rather skip practicing answers today and focus on reaching out to people you know?",
+      "facts": []
+    },
+    {
+      "id": "sam-s09:t04",
+      "speaker": "user",
+      "text": "Yeah, please, my brain couldn't handle another mock right now. Staring at job boards every evening has been wearing me thin anyway.",
+      "facts": []
+    },
+    {
+      "id": "sam-s09:t05",
+      "speaker": "wren",
+      "text": "A warm introduction usually beats a cold application every time. Who in your world works somewhere you might want to land?",
+      "facts": []
+    },
+    {
+      "id": "sam-s09:t06",
+      "speaker": "user",
+      "text": "Well, my neighbor Joanne works over at Orchardly, and I really want to see if she can get me a referral there.",
+      "facts": [
+        "sam-f10"
+      ]
+    },
+    {
+      "id": "sam-s09:t07",
+      "speaker": "wren",
+      "text": "A neighbor is a wonderful bridge into a company. Have you two talked about work lately?",
+      "facts": []
+    },
+    {
+      "id": "sam-s09:t08",
+      "speaker": "user",
+      "text": "Not really, just the usual wave and chat about our dogs when we're out front. I know she likes it there, but I always feel awkward asking for favors.",
+      "facts": []
+    },
+    {
+      "id": "sam-s09:t09",
+      "speaker": "wren",
+      "text": "Most folks are happy to help a neighbor when it's easy. What if you just asked her for fifteen minutes to learn about the culture?",
+      "facts": []
+    },
+    {
+      "id": "sam-s09:t10",
+      "speaker": "user",
+      "text": "Yeah, that feels way less pushy than just saying please hand my resume to your boss. I could text her and offer to bring over some tea.",
+      "facts": []
+    },
+    {
+      "id": "sam-s09:t11",
+      "speaker": "wren",
+      "text": "Tea and a short chat sounds comfortable for both of you. How would you word that first text?",
+      "facts": []
+    },
+    {
+      "id": "sam-s09:t12",
+      "speaker": "user",
+      "text": "Maybe something like, hey Joanne, hope your week is going well. I'm exploring customer success roles and noticed some openings at Orchardly, so I'd love to drop off a coffee or tea and hear what you think of the place.",
+      "facts": []
+    },
+    {
+      "id": "sam-s09:t13",
+      "speaker": "wren",
+      "text": "That is warm, low-pressure, and directly to the point. Can you send that out before you start your evening?",
+      "facts": []
+    },
+    {
+      "id": "sam-s09:t14",
+      "speaker": "user",
+      "text": "Yeah, I can do that right after we wrap up. I just need to get it off my plate so I can actually relax tonight.",
+      "facts": []
+    },
+    {
+      "id": "sam-s09:t15",
+      "speaker": "wren",
+      "text": "Getting it sent will take a little weight off your shoulders. Want to let me know how she responds tomorrow?",
+      "facts": []
+    },
+    {
+      "id": "sam-s09:t16",
+      "speaker": "user",
+      "text": "Definitely will. Thanks for keeping me on track today, Wren, I'm gonna go send that text now.",
+      "facts": []
+    }
+  ]
+}

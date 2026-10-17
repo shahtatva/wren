@@ -1,0 +1,9 @@
+{
+  "id": "ana-s01", "persona": "ana", "date": "2026-10-01", "mode": "checkin",
+  "turns": [
+    {"id": "ana-s01:t01", "speaker": "wren", "text": "Hi Ana. What's on your plate this week?", "facts": []},
+    {"id": "ana-s01:t02", "speaker": "user", "text": "Oakridge booked my phone screen for Tuesday the sixth.", "facts": ["ana-f01"]},
+    {"id": "ana-s01:t03", "speaker": "wren", "text": "Nice. Which story will you lead with?", "facts": []},
+    {"id": "ana-s01:t04", "speaker": "user", "text": "Probably the food bank one, the churn dashboard I built at bootcamp.", "facts": ["ana-f03"]}
+  ]
+}

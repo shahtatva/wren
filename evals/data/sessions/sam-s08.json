@@ -1,0 +1,107 @@
+{
+  "id": "sam-s08",
+  "persona": "sam",
+  "date": "2026-10-05",
+  "mode": "checkin",
+  "generator": "gemini-3.7-flash",
+  "turns": [
+    {
+      "id": "sam-s08:t01",
+      "speaker": "wren",
+      "text": "Hi, Sam. How did your shift at the store go today?",
+      "facts": []
+    },
+    {
+      "id": "sam-s08:t02",
+      "speaker": "user",
+      "text": "Hey Wren. Oh, you know, standard Monday inventory chaos, but something really unexpected popped up during my lunch break.",
+      "facts": []
+    },
+    {
+      "id": "sam-s08:t03",
+      "speaker": "wren",
+      "text": "A lunch break surprise sounds intriguing. What happened?",
+      "facts": []
+    },
+    {
+      "id": "sam-s08:t04",
+      "speaker": "user",
+      "text": "So remember Vantlow Software, who passed on me last month? Well, their recruiter actually reached back out to me today about a customer success associate role.",
+      "facts": [
+        "sam-f09"
+      ]
+    },
+    {
+      "id": "sam-s08:t05",
+      "speaker": "wren",
+      "text": "That is quite a twist after their rejection. How did you feel seeing their name in your inbox again?",
+      "facts": []
+    },
+    {
+      "id": "sam-s08:t06",
+      "speaker": "user",
+      "text": "Honestly, totally stunned. I really thought that ship had sailed for good, especially when I was worrying my retail background scared them off.",
+      "facts": []
+    },
+    {
+      "id": "sam-s08:t07",
+      "speaker": "wren",
+      "text": "It turns out your retail work didn't count you out after all. Did the recruiter say what the next steps look like?",
+      "facts": []
+    },
+    {
+      "id": "sam-s08:t08",
+      "speaker": "user",
+      "text": "Yeah, she just asked if I'd be up for a short catch-up call later in the week to talk through the new position.",
+      "facts": []
+    },
+    {
+      "id": "sam-s08:t09",
+      "speaker": "wren",
+      "text": "That is very encouraging news. Do you want to move forward with them?",
+      "facts": []
+    },
+    {
+      "id": "sam-s08:t10",
+      "speaker": "user",
+      "text": "I think so, yeah. Since Pellwick moved my final round, having Vantlow back on the table gives me another solid option.",
+      "facts": []
+    },
+    {
+      "id": "sam-s08:t11",
+      "speaker": "wren",
+      "text": "Keeping multiple paths open takes some pressure off. How are you feeling about juggling both of them while working full-time?",
+      "facts": []
+    },
+    {
+      "id": "sam-s08:t12",
+      "speaker": "user",
+      "text": "I mean, I'm definitely tired, but having two places interested feels a whole lot better than zero.",
+      "facts": []
+    },
+    {
+      "id": "sam-s08:t13",
+      "speaker": "wren",
+      "text": "It definitely gives you some breathing room. Do you want to run through any talking points before that phone screen?",
+      "facts": []
+    },
+    {
+      "id": "sam-s08:t14",
+      "speaker": "user",
+      "text": "Not tonight, honestly. I kind of just want to chill and eat dinner, maybe prep a bit closer to Thursday.",
+      "facts": []
+    },
+    {
+      "id": "sam-s08:t15",
+      "speaker": "wren",
+      "text": "Rest is an important part of the process too. Are you heading offline for the evening?",
+      "facts": []
+    },
+    {
+      "id": "sam-s08:t16",
+      "speaker": "user",
+      "text": "Yeah, closing the laptop and taking a real break. Thanks for listening, Wren.",
+      "facts": []
+    }
+  ]
+}

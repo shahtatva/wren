@@ -1,0 +1,113 @@
+{
+  "id": "sam-s04",
+  "persona": "sam",
+  "date": "2026-09-14",
+  "mode": "mock",
+  "generator": "gemini-3.7-flash",
+  "turns": [
+    {
+      "id": "sam-s04:t01",
+      "speaker": "wren",
+      "text": "Hi Sam. Today we're running a mock interview with a hiring manager for customer success. Ready to jump in?",
+      "facts": []
+    },
+    {
+      "id": "sam-s04:t02",
+      "speaker": "user",
+      "text": "Hey Wren. Yeah, let's do it. I just finished a long shift at the store, but I'm ready.",
+      "facts": []
+    },
+    {
+      "id": "sam-s04:t03",
+      "speaker": "wren",
+      "text": "I'm stepping into the hiring manager role now. Tell me about a time you took ownership of a struggling customer metric.",
+      "facts": []
+    },
+    {
+      "id": "sam-s04:t04",
+      "speaker": "user",
+      "text": "Sure. So at my store, our customer satisfaction score had dropped down to seventy-two, which made us the lowest in the whole district. I realized the team felt overwhelmed, so I set up five-minute morning check-ins and revamped how we resolved checkout issues. In just one quarter, we got that score up to eighty-nine and turned things around.",
+      "facts": [
+        "sam-f04"
+      ]
+    },
+    {
+      "id": "sam-s04:t05",
+      "speaker": "wren",
+      "text": "That is a noticeable jump. How did your team react when you rolled out those daily check-ins?",
+      "facts": []
+    },
+    {
+      "id": "sam-s04:t06",
+      "speaker": "user",
+      "text": "They were hesitant at first because retail shifts are so packed, but once they saw the checkout lines moving smoother, they really bought in.",
+      "facts": []
+    },
+    {
+      "id": "sam-s04:t07",
+      "speaker": "wren",
+      "text": "I'm stepping out of character now. The story is solid, but you rushed through the numbers. Do you notice that you talk fast when you're nervous?",
+      "facts": [
+        "sam-f12"
+      ]
+    },
+    {
+      "id": "sam-s04:t08",
+      "speaker": "user",
+      "text": "Yeah, definitely. Whenever I feel nervous, I talk way too fast and barely take a breath.",
+      "facts": [
+        "sam-f12"
+      ]
+    },
+    {
+      "id": "sam-s04:t09",
+      "speaker": "wren",
+      "text": "It happens to a lot of people. Try pausing for one full breath before you share the results. Want to try that first answer one more time?",
+      "facts": []
+    },
+    {
+      "id": "sam-s04:t10",
+      "speaker": "user",
+      "text": "Yeah, let's reset and try it again. I'll make sure to breathe this time.",
+      "facts": []
+    },
+    {
+      "id": "sam-s04:t11",
+      "speaker": "wren",
+      "text": "Stepping back into the interviewer role. Tell me about a time you improved a low customer metric.",
+      "facts": []
+    },
+    {
+      "id": "sam-s04:t12",
+      "speaker": "user",
+      "text": "At my store, our customer satisfaction score was at seventy-two, the lowest in our district. I started daily morning huddles and fixed our checkout bottlenecks. Within one quarter, we brought that score up to eighty-nine.",
+      "facts": [
+        "sam-f04"
+      ]
+    },
+    {
+      "id": "sam-s04:t13",
+      "speaker": "wren",
+      "text": "Stepping out again. That pace gave the eighty-nine room to land. How did that feel to say out loud?",
+      "facts": []
+    },
+    {
+      "id": "sam-s04:t14",
+      "speaker": "user",
+      "text": "Way better, honestly. It felt like I was actually telling a story instead of just racing to finish.",
+      "facts": []
+    },
+    {
+      "id": "sam-s04:t15",
+      "speaker": "wren",
+      "text": "You sounded confident and steady. Should we wrap up here so you can rest after your shift?",
+      "facts": []
+    },
+    {
+      "id": "sam-s04:t16",
+      "speaker": "user",
+      "text": "Yeah, that sounds great. Thanks for catching that, Wren. Talk soon!",
+      "facts": []
+    }
+  ]
+}

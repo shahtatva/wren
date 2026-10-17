@@ -1,0 +1,115 @@
+{
+  "id": "maya-s03",
+  "persona": "maya",
+  "date": "2026-09-10",
+  "mode": "checkin",
+  "generator": "gemini-3.8-flash",
+  "turns": [
+    {
+      "id": "maya-s03:t01",
+      "speaker": "wren",
+      "text": "Hey Maya. Good to hear your voice today. How are you holding up?",
+      "facts": []
+    },
+    {
+      "id": "maya-s03:t02",
+      "speaker": "user",
+      "text": "Hey Wren. Honestly, not great. I have some pretty bad news on the job front.",
+      "facts": []
+    },
+    {
+      "id": "maya-s03:t03",
+      "speaker": "wren",
+      "text": "I'm right here with you. What happened?",
+      "facts": []
+    },
+    {
+      "id": "maya-s03:t04",
+      "speaker": "user",
+      "text": "Well, Corvid Labs passed on me. I got the rejection email yesterday for that SDR position, right after finishing the hiring manager interview.",
+      "facts": [
+        "maya-f11"
+      ]
+    },
+    {
+      "id": "maya-s03:t05",
+      "speaker": "wren",
+      "text": "Oh, Maya, I'm sorry. That was a big round to get through. How did it feel when the email came in?",
+      "facts": []
+    },
+    {
+      "id": "maya-s03:t06",
+      "speaker": "user",
+      "text": "It stung. I thought the chat with the hiring manager actually went well, so seeing the canned no thanks was rough.",
+      "facts": []
+    },
+    {
+      "id": "maya-s03:t07",
+      "speaker": "wren",
+      "text": "That kind of drop after feeling good about a conversation really hurts. How are your energy levels today?",
+      "facts": []
+    },
+    {
+      "id": "maya-s03:t08",
+      "speaker": "user",
+      "text": "Honestly, waking up today, I just feel totally flat and discouraged about everything.",
+      "facts": [
+        "maya-f16"
+      ]
+    },
+    {
+      "id": "maya-s03:t09",
+      "speaker": "wren",
+      "text": "That makes complete sense. A letdown like that takes the wind right out of you. Have you told anyone else about it yet?",
+      "facts": []
+    },
+    {
+      "id": "maya-s03:t10",
+      "speaker": "user",
+      "text": "No, not yet. I haven't really wanted to bring it up with my friends or family because I'm just tired of talking about interviews.",
+      "facts": []
+    },
+    {
+      "id": "maya-s03:t11",
+      "speaker": "wren",
+      "text": "That's okay too. You don't have to broadcast it until you're ready. Do you want to unpack what happened, or would you rather take a breather today?",
+      "facts": []
+    },
+    {
+      "id": "maya-s03:t12",
+      "speaker": "user",
+      "text": "I think I just need a breather. My brain feels kind of foggy, and doing mock questions right now sounds awful.",
+      "facts": []
+    },
+    {
+      "id": "maya-s03:t13",
+      "speaker": "wren",
+      "text": "No drills today, promise. What is one small thing you can do this afternoon that has nothing to do with applications?",
+      "facts": []
+    },
+    {
+      "id": "maya-s03:t14",
+      "speaker": "user",
+      "text": "I might just go for a walk outside and grab some iced coffee, then finish a book I started last week.",
+      "facts": []
+    },
+    {
+      "id": "maya-s03:t15",
+      "speaker": "wren",
+      "text": "That sounds like a solid plan. Would you like to check in again tomorrow once you've had a little space?",
+      "facts": []
+    },
+    {
+      "id": "maya-s03:t16",
+      "speaker": "user",
+      "text": "Yeah, tomorrow sounds a lot better. Thanks for listening, Wren.",
+      "facts": []
+    },
+    {
+      "id": "maya-s03:t17",
+      "speaker": "wren",
+      "text": "Any time, Maya. Go enjoy that walk and coffee, okay?",
+      "facts": []
+    }
+  ]
+}

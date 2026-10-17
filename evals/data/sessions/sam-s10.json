@@ -1,0 +1,111 @@
+{
+  "id": "sam-s10",
+  "persona": "sam",
+  "date": "2026-10-12",
+  "mode": "checkin",
+  "generator": "gemini-3.7-flash",
+  "turns": [
+    {
+      "id": "sam-s10:t01",
+      "speaker": "wren",
+      "text": "Welcome back, Sam. The Pellwick final is coming up soon. How are your energy levels today?",
+      "facts": []
+    },
+    {
+      "id": "sam-s10:t02",
+      "speaker": "user",
+      "text": "Honestly, pretty wiped out after closing the store last night. But I really want to dial in my prep before the interview.",
+      "facts": []
+    },
+    {
+      "id": "sam-s10:t03",
+      "speaker": "wren",
+      "text": "I hear you. We can keep this light and target just what you need. Where does it feel creakiest right now?",
+      "facts": []
+    },
+    {
+      "id": "sam-s10:t04",
+      "speaker": "user",
+      "text": "Well, looking back at my mocks, my stories are usually pretty strong, but my answers to why I want to work at this company always end up sounding generic. It just feels cookie-cutter.",
+      "facts": [
+        "sam-f11"
+      ]
+    },
+    {
+      "id": "sam-s10:t05",
+      "speaker": "wren",
+      "text": "That matches what we noticed before. Your stories show real impact, but the why this company piece sounds like it could fit anywhere. Do you want to anchor Pellwick to something specific you've handled?",
+      "facts": [
+        "sam-f11"
+      ]
+    },
+    {
+      "id": "sam-s10:t06",
+      "speaker": "user",
+      "text": "Yeah, exactly. I need to make that connection clearer. But first, can I quickly run through the onboarding checklist story so it's fresh?",
+      "facts": []
+    },
+    {
+      "id": "sam-s10:t07",
+      "speaker": "wren",
+      "text": "Let's hear it. What problem did you tackle with that process?",
+      "facts": []
+    },
+    {
+      "id": "sam-s10:t08",
+      "speaker": "user",
+      "text": "So people were overwhelmed by informal training, so I wrote an onboarding checklist that cut our new-hire ramp time at the shop from six weeks down to three.",
+      "facts": [
+        "sam-f03"
+      ]
+    },
+    {
+      "id": "sam-s10:t09",
+      "speaker": "wren",
+      "text": "Cutting ramp time in half is a huge proof point. Did the rest of the staff find it easy to use?",
+      "facts": []
+    },
+    {
+      "id": "sam-s10:t10",
+      "speaker": "user",
+      "text": "Yeah, the shift leads loved having a clear roadmap instead of guessing what was covered. It saved everyone hours of repeat explanations.",
+      "facts": []
+    },
+    {
+      "id": "sam-s10:t11",
+      "speaker": "wren",
+      "text": "That shows you design things for real people on the ground. How does that connect to what Pellwick actually sells?",
+      "facts": []
+    },
+    {
+      "id": "sam-s10:t12",
+      "speaker": "user",
+      "text": "Well, their platform helps retail inventory managers switch over to new systems, which is the exact pain point I lived through every day. If I say that, it ties my background right into their product.",
+      "facts": []
+    },
+    {
+      "id": "sam-s10:t13",
+      "speaker": "wren",
+      "text": "That works because it's specific and personal. Doesn't that feel sturdier than a boilerplate compliment?",
+      "facts": []
+    },
+    {
+      "id": "sam-s10:t14",
+      "speaker": "user",
+      "text": "Definitely. It feels way less fake when I tie it back to my actual store headaches.",
+      "facts": []
+    },
+    {
+      "id": "sam-s10:t15",
+      "speaker": "wren",
+      "text": "Trust that instinct. Do you want to run through that Pellwick answer once out loud, or wrap up and rest?",
+      "facts": []
+    },
+    {
+      "id": "sam-s10:t16",
+      "speaker": "user",
+      "text": "I think I should rest my voice and wrap up for tonight. Thanks, Wren.",
+      "facts": []
+    }
+  ]
+}

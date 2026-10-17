@@ -1,0 +1,97 @@
+{
+  "id": "maya-s09",
+  "persona": "maya",
+  "date": "2026-10-10",
+  "mode": "checkin",
+  "generator": "gemini-3.7-flash",
+  "turns": [
+    {
+      "id": "maya-s09:t01",
+      "speaker": "wren",
+      "text": "Hey Maya. Good to hear your voice today. How are things looking after the busy week?",
+      "facts": []
+    },
+    {
+      "id": "maya-s09:t02",
+      "speaker": "user",
+      "text": "Hey Wren. Honestly, it's been a whirlwind, but I actually got some pretty big news in my inbox this morning.",
+      "facts": []
+    },
+    {
+      "id": "maya-s09:t03",
+      "speaker": "wren",
+      "text": "That sounds promising. What landed in your inbox?",
+      "facts": []
+    },
+    {
+      "id": "maya-s09:t04",
+      "speaker": "user",
+      "text": "Well, Tessellate wants to move forward. They scheduled my final round for Monday, October nineteenth, but it turns out it is going to be a panel with four interviewers.",
+      "facts": [
+        "maya-f14"
+      ]
+    },
+    {
+      "id": "maya-s09:t05",
+      "speaker": "wren",
+      "text": "Four interviewers is a full room, but you have handled tough rooms before. Do you know anyone on the inside who could give you a boost?",
+      "facts": []
+    },
+    {
+      "id": "maya-s09:t06",
+      "speaker": "user",
+      "text": "Actually, yes. My classmate Priya from grad school works at Tessellate, and I really want to get an internal referral from her if she is willing to put in a good word.",
+      "facts": [
+        "maya-f18"
+      ]
+    },
+    {
+      "id": "maya-s09:t07",
+      "speaker": "wren",
+      "text": "Having Priya in your corner would be huge. Have you reached out to her yet?",
+      "facts": []
+    },
+    {
+      "id": "maya-s09:t08",
+      "speaker": "user",
+      "text": "Not yet, I was actually debating how to approach it without sounding like I'm just using her for a hookup, you know?",
+      "facts": []
+    },
+    {
+      "id": "maya-s09:t09",
+      "speaker": "wren",
+      "text": "Just be honest and ask if she has fifteen minutes to chat about team culture. How does that feel to send?",
+      "facts": []
+    },
+    {
+      "id": "maya-s09:t10",
+      "speaker": "user",
+      "text": "That feels a lot more natural, yeah. I can just mention I made it to the panel and would love her perspective.",
+      "facts": []
+    },
+    {
+      "id": "maya-s09:t11",
+      "speaker": "wren",
+      "text": "That takes the pressure off both of you. When do you think you will send that note?",
+      "facts": []
+    },
+    {
+      "id": "maya-s09:t12",
+      "speaker": "user",
+      "text": "I can send a quick message right after we get off the phone so I don't overthink it.",
+      "facts": []
+    },
+    {
+      "id": "maya-s09:t13",
+      "speaker": "wren",
+      "text": "That is the way to do it. Are you feeling ready to step away from the screen after that and take a break?",
+      "facts": []
+    },
+    {
+      "id": "maya-s09:t14",
+      "speaker": "user",
+      "text": "Definitely, I am going to walk around the block and let my head clear. Thanks for talking it through with me, Wren.",
+      "facts": []
+    }
+  ]
+}

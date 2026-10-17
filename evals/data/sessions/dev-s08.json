@@ -1,0 +1,99 @@
+{
+  "id": "dev-s08",
+  "persona": "dev",
+  "date": "2026-10-05",
+  "mode": "mock",
+  "generator": "gemini-3.8-flash",
+  "turns": [
+    {
+      "id": "dev-s08:t01",
+      "speaker": "wren",
+      "text": "Today is our mock hiring-manager interview. We will focus on your problem-solving stories. Are you ready to jump in?",
+      "facts": []
+    },
+    {
+      "id": "dev-s08:t02",
+      "speaker": "user",
+      "text": "Yeah, let's do it. I'm a little nervous, but I'd rather work out the rough spots with you first.",
+      "facts": []
+    },
+    {
+      "id": "dev-s08:t03",
+      "speaker": "wren",
+      "text": "I am stepping into the interviewer role now. Dev, can you walk me through a time you had to deal with messy or inconsistent data?",
+      "facts": []
+    },
+    {
+      "id": "dev-s08:t04",
+      "speaker": "user",
+      "text": "Sure. In my teaching role, our attendance tracking was in complete disarray right before our district audit. The records didn't match across departments, and nobody really knew which student counts were actually accurate.",
+      "facts": []
+    },
+    {
+      "id": "dev-s08:t05",
+      "speaker": "wren",
+      "text": "Data discrepancies like that create massive headaches down the line. What specific steps did you take to resolve it?",
+      "facts": []
+    },
+    {
+      "id": "dev-s08:t06",
+      "speaker": "user",
+      "text": "I ended up cleaning up the school's attendance records myself. I gathered three separate spreadsheets from the front office and guidance counselors, merged them together into one master file, and cleared out roughly three hundred duplicate entries that were skewing our counts. Though honestly, it was really just spreadsheets, so nothing super high-tech.",
+      "facts": [
+        "dev-f04"
+      ]
+    },
+    {
+      "id": "dev-s08:t07",
+      "speaker": "wren",
+      "text": "That sounds like a heavy lift. What was the ultimate impact once you finished that cleanup?",
+      "facts": []
+    },
+    {
+      "id": "dev-s08:t08",
+      "speaker": "user",
+      "text": "Our official district submission went through without a single compliance flag. It saved the admin staff dozens of hours of manual cross-checking, and the administration ended up keeping that process for the rest of the school year.",
+      "facts": []
+    },
+    {
+      "id": "dev-s08:t09",
+      "speaker": "wren",
+      "text": "I am stepping out of the interviewer role now. You laid out the problem and the resolution very clearly. How did that answer feel to say aloud?",
+      "facts": []
+    },
+    {
+      "id": "dev-s08:t10",
+      "speaker": "user",
+      "text": "It felt mostly good, but I noticed I stumbled a bit right when I started talking about the tools I used.",
+      "facts": []
+    },
+    {
+      "id": "dev-s08:t11",
+      "speaker": "wren",
+      "text": "Your technical explanation was solid, but you undersold your technical work again by calling your projects just spreadsheets. Why do you think that reflex keeps popping up?",
+      "facts": [
+        "dev-f12"
+      ]
+    },
+    {
+      "id": "dev-s08:t12",
+      "speaker": "user",
+      "text": "Yeah, you caught me. I keep underselling my technical work by brushing my projects off as just spreadsheets, almost like I'm apologizing for not using a huge database.",
+      "facts": [
+        "dev-f12"
+      ]
+    },
+    {
+      "id": "dev-s08:t13",
+      "speaker": "wren",
+      "text": "Own the business problem you solved instead of minimizing your tools. Would you like to try answering that question one more time?",
+      "facts": []
+    },
+    {
+      "id": "dev-s08:t14",
+      "speaker": "user",
+      "text": "I think I'd actually like to take a short breather and let that feedback settle in so I don't repeat it tomorrow.",
+      "facts": []
+    }
+  ]
+}

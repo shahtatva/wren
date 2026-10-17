@@ -1,0 +1,107 @@
+{
+  "id": "sam-s05",
+  "persona": "sam",
+  "date": "2026-09-21",
+  "mode": "checkin",
+  "generator": "gemini-3.7-flash",
+  "turns": [
+    {
+      "id": "sam-s05:t01",
+      "speaker": "wren",
+      "text": "Hey Sam. Good to hear your voice after a long day. How did your shift at the store wrap up?",
+      "facts": []
+    },
+    {
+      "id": "sam-s05:t02",
+      "speaker": "user",
+      "text": "Ugh, exhausting. We had floor resets and two call-outs, so I was running back and forth between the register and the stockroom all afternoon.",
+      "facts": []
+    },
+    {
+      "id": "sam-s05:t03",
+      "speaker": "wren",
+      "text": "That sounds draining on your feet and your patience. Did any news come in while you were running around?",
+      "facts": []
+    },
+    {
+      "id": "sam-s05:t04",
+      "speaker": "user",
+      "text": "Actually, yeah, I checked my email on my fifteen-minute break. Pellwick sent over the invite, so the final round is officially locked in for Monday, October twelfth.",
+      "facts": [
+        "sam-f06"
+      ]
+    },
+    {
+      "id": "sam-s05:t05",
+      "speaker": "wren",
+      "text": "A final round is huge news. How are you feeling about having a few weeks to get ready?",
+      "facts": []
+    },
+    {
+      "id": "sam-s05:t06",
+      "speaker": "user",
+      "text": "A little bit of everything, honestly. It's great to have some breathing room, but part of me knows that means three weeks of sitting with the nerves.",
+      "facts": []
+    },
+    {
+      "id": "sam-s05:t07",
+      "speaker": "wren",
+      "text": "The waiting is always tricky. Did the recruiter mention what the format looks like?",
+      "facts": []
+    },
+    {
+      "id": "sam-s05:t08",
+      "speaker": "user",
+      "text": "Yeah, looks like a panel with their head of customer success and an account manager, followed by a live customer scenario.",
+      "facts": []
+    },
+    {
+      "id": "sam-s05:t09",
+      "speaker": "wren",
+      "text": "Live scenarios play right into how you de-escalate problems on the floor every day. Do you want to dive into prep later this week or just rest tonight?",
+      "facts": []
+    },
+    {
+      "id": "sam-s05:t10",
+      "speaker": "user",
+      "text": "Definitely taking tonight off. Maybe later this week we can dust off the onboarding checklist story and tighten it up a bit.",
+      "facts": []
+    },
+    {
+      "id": "sam-s05:t11",
+      "speaker": "wren",
+      "text": "Resting first is smart. Were you able to get someone to cover your store hours for that Monday?",
+      "facts": []
+    },
+    {
+      "id": "sam-s05:t12",
+      "speaker": "user",
+      "text": "Yeah, my assistant manager already agreed to trade shifts with me, so I have the whole day cleared.",
+      "facts": []
+    },
+    {
+      "id": "sam-s05:t13",
+      "speaker": "wren",
+      "text": "That takes off a lot of logistical pressure. What does relaxing look like for the rest of your evening?",
+      "facts": []
+    },
+    {
+      "id": "sam-s05:t14",
+      "speaker": "user",
+      "text": "Probably just leftover pasta and some trashy television with my cat on the couch.",
+      "facts": []
+    },
+    {
+      "id": "sam-s05:t15",
+      "speaker": "wren",
+      "text": "That sounds like the exact right plan. Want to reconnect on Thursday evening to map out our practice schedule?",
+      "facts": []
+    },
+    {
+      "id": "sam-s05:t16",
+      "speaker": "user",
+      "text": "Thursday evening works great for me. Talk to you then, Wren.",
+      "facts": []
+    }
+  ]
+}

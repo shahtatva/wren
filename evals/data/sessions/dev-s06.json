@@ -1,0 +1,109 @@
+{
+  "id": "dev-s06",
+  "persona": "dev",
+  "date": "2026-09-25",
+  "mode": "checkin",
+  "generator": "gemini-3.8-flash",
+  "turns": [
+    {
+      "id": "dev-s06:t01",
+      "speaker": "wren",
+      "text": "Welcome back, Dev. How are you holding up today?",
+      "facts": []
+    },
+    {
+      "id": "dev-s06:t02",
+      "speaker": "user",
+      "text": "Hey Wren. Honestly, I'm doing really well today. Just catching my breath after a pretty busy morning.",
+      "facts": []
+    },
+    {
+      "id": "dev-s06:t03",
+      "speaker": "wren",
+      "text": "That sounds like a welcome change of pace. Did something happen with your applications?",
+      "facts": []
+    },
+    {
+      "id": "dev-s06:t04",
+      "speaker": "user",
+      "text": "Yeah, actually! I had my technical screen over at Ottergrove this morning, and it went really well. They gave me this problem, and I ended up explaining a window function step by step, just laying out each part of the logic without rushing.",
+      "facts": [
+        "dev-f10"
+      ]
+    },
+    {
+      "id": "dev-s06:t05",
+      "speaker": "wren",
+      "text": "That is wonderful to hear. How did it feel while you were walking through it?",
+      "facts": []
+    },
+    {
+      "id": "dev-s06:t06",
+      "speaker": "user",
+      "text": "It felt surprisingly natural, almost like breaking down a concept for my old students. Afterward, I just felt so upbeat and a whole lot more confident about where I stand.",
+      "facts": [
+        "dev-f16"
+      ]
+    },
+    {
+      "id": "dev-s06:t07",
+      "speaker": "wren",
+      "text": "You trusted your instincts. Did they give you any sense of what comes next?",
+      "facts": []
+    },
+    {
+      "id": "dev-s06:t08",
+      "speaker": "user",
+      "text": "She said the recruiting team should reach out early next week about the next round. She seemed pretty engaged while we chatted.",
+      "facts": []
+    },
+    {
+      "id": "dev-s06:t09",
+      "speaker": "wren",
+      "text": "That sounds promising. What do you think made the explanation click so cleanly this time?",
+      "facts": []
+    },
+    {
+      "id": "dev-s06:t10",
+      "speaker": "user",
+      "text": "I think just slowing down and not trying to sound overly fancy. I just spoke like a colleague explaining the data flow.",
+      "facts": []
+    },
+    {
+      "id": "dev-s06:t11",
+      "speaker": "wren",
+      "text": "That grounded approach suits you. Are you planning to rest a bit today, or keep studying?",
+      "facts": []
+    },
+    {
+      "id": "dev-s06:t12",
+      "speaker": "user",
+      "text": "I think I'm going to take a long walk outside and make a nice cup of coffee. I might glance at some notes tonight, but nothing heavy.",
+      "facts": []
+    },
+    {
+      "id": "dev-s06:t13",
+      "speaker": "wren",
+      "text": "A break sounds well earned. Would you like to check in again before next week starts?",
+      "facts": []
+    },
+    {
+      "id": "dev-s06:t14",
+      "speaker": "user",
+      "text": "Yeah, that'd be great. Let's do a quick check-in on Sunday evening.",
+      "facts": []
+    },
+    {
+      "id": "dev-s06:t15",
+      "speaker": "wren",
+      "text": "Sunday evening works well. Ready to go grab that coffee?",
+      "facts": []
+    },
+    {
+      "id": "dev-s06:t16",
+      "speaker": "user",
+      "text": "Definitely ready. Talk to you on Sunday, Wren!",
+      "facts": []
+    }
+  ]
+}

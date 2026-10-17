@@ -1,0 +1,111 @@
+{
+  "id": "dev-s05",
+  "persona": "dev",
+  "date": "2026-09-21",
+  "mode": "mock",
+  "generator": "gemini-3.8-flash",
+  "turns": [
+    {
+      "id": "dev-s05:t01",
+      "speaker": "wren",
+      "text": "Hey Dev. Ready to try a behavioral mock interview today?",
+      "facts": []
+    },
+    {
+      "id": "dev-s05:t02",
+      "speaker": "user",
+      "text": "Yeah, let's do it. I turned in that take-home, so now I really want to practice telling my stories out loud.",
+      "facts": []
+    },
+    {
+      "id": "dev-s05:t03",
+      "speaker": "wren",
+      "text": "I'm stepping into the interviewer chair now. Can you tell me about a time you used data to persuade colleagues to change how they did things?",
+      "facts": []
+    },
+    {
+      "id": "dev-s05:t04",
+      "speaker": "user",
+      "text": "Sure. Back at my school, every teacher had their own informal system for checking if students understood the daily lesson, which made it really hard to spot broader trends. I wanted our whole group to try quick end-of-class checks, but people were pretty protective of their class time.",
+      "facts": []
+    },
+    {
+      "id": "dev-s05:t05",
+      "speaker": "wren",
+      "text": "How did you convince them to give your idea a shot?",
+      "facts": []
+    },
+    {
+      "id": "dev-s05:t06",
+      "speaker": "user",
+      "text": "I decided to test it out myself first. I ran a pilot in my own classroom, and after a month, my students' weekly quiz scores jumped by ten points. When I shared that data at our department meeting, the other math teachers agreed to adopt weekly exit tickets across all their classes.",
+      "facts": [
+        "dev-f05"
+      ]
+    },
+    {
+      "id": "dev-s05:t07",
+      "speaker": "wren",
+      "text": "How did you help them roll that out smoothly?",
+      "facts": []
+    },
+    {
+      "id": "dev-s05:t08",
+      "speaker": "user",
+      "text": "Well, some teachers worried about extra grading. So I built out basic scaffolding sheets and differentiated pacing prompts so they wouldn't spend hours on formative assessment.",
+      "facts": []
+    },
+    {
+      "id": "dev-s05:t09",
+      "speaker": "wren",
+      "text": "Stepping out of the interviewer role now. That's a solid story with clear results. How did that feel coming out?",
+      "facts": []
+    },
+    {
+      "id": "dev-s05:t10",
+      "speaker": "user",
+      "text": "It felt mostly okay, but I'm not sure if the end part landed well.",
+      "facts": []
+    },
+    {
+      "id": "dev-s05:t11",
+      "speaker": "wren",
+      "text": "You lean on teacher jargon like scaffolding and formative assessment that interviewers may not follow. How would you explain that prep work in plain words?",
+      "facts": [
+        "dev-f14"
+      ]
+    },
+    {
+      "id": "dev-s05:t12",
+      "speaker": "user",
+      "text": "Oof, yeah, you're right. I definitely fall back on school jargon like scaffolding when I talk about my past work, and an interviewer outside education probably wouldn't know what that means.",
+      "facts": [
+        "dev-f14"
+      ]
+    },
+    {
+      "id": "dev-s05:t13",
+      "speaker": "wren",
+      "text": "It's an easy habit when you've taught for years. Want to try rephrasing that last piece right now?",
+      "facts": []
+    },
+    {
+      "id": "dev-s05:t14",
+      "speaker": "user",
+      "text": "Yeah, let me try. I could say I created standardized five-minute answer keys and simple score sheets so teachers could review student progress without extra overtime.",
+      "facts": []
+    },
+    {
+      "id": "dev-s05:t15",
+      "speaker": "wren",
+      "text": "That lands immediately. How did that sound in your own ears?",
+      "facts": []
+    },
+    {
+      "id": "dev-s05:t16",
+      "speaker": "user",
+      "text": "Way clearer, honestly. It actually sounds like an operational solution someone in any company could understand.",
+      "facts": []
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+# Keep local env files out of CLI uploads. Vercel only skips .env.local and
+# .env.*.local by default, and Next.js would read a plain .env at build time.
+# Deployed values live in the Vercel project's environment variables instead.
+.env
+.env.*
+!.env.example

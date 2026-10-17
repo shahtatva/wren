@@ -1,0 +1,7 @@
+{
+  "id": "ana-s02", "persona": "ana", "date": "2026-10-05", "mode": "checkin",
+  "turns": [
+    {"id": "ana-s02:t01", "speaker": "wren", "text": "Welcome back. How's the week going?", "facts": []},
+    {"id": "ana-s02:t02", "speaker": "user", "text": "Oakridge pushed the screen to Thursday the eighth.", "facts": ["ana-f02"]}
+  ]
+}

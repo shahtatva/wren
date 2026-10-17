@@ -1,0 +1,111 @@
+{
+  "id": "sam-s06",
+  "persona": "sam",
+  "date": "2026-09-26",
+  "mode": "mock",
+  "generator": "gemini-3.7-flash",
+  "turns": [
+    {
+      "id": "sam-s06:t01",
+      "speaker": "wren",
+      "text": "Hey Sam. Ready to run a mock interview for Pellwick today?",
+      "facts": []
+    },
+    {
+      "id": "sam-s06:t02",
+      "speaker": "user",
+      "text": "Yeah, let's do it. I'm a little worn out from a long day on the floor, but I want to get the practice in.",
+      "facts": []
+    },
+    {
+      "id": "sam-s06:t03",
+      "speaker": "wren",
+      "text": "I'm stepping into the interviewer persona now. Tell me about a time you had to drive customer adoption or engagement on a short timeline.",
+      "facts": []
+    },
+    {
+      "id": "sam-s06:t04",
+      "speaker": "user",
+      "text": "Sure. At the store, repeat visits were lagging, so I ran a push for our loyalty program, and we managed to sign up four hundred customers in just one month. We had to move fast to get shoppers enrolled right at the counter.",
+      "facts": [
+        "sam-f05"
+      ]
+    },
+    {
+      "id": "sam-s06:t05",
+      "speaker": "wren",
+      "text": "That is a big lift in a short window. How did you get that kind of buy-in from your customers?",
+      "facts": []
+    },
+    {
+      "id": "sam-s06:t06",
+      "speaker": "user",
+      "text": "Well, we reworked the checkout flow, and we set up quick morning check-ins to monitor our daily numbers. We also tested different ways to frame the benefits so we could see what made shoppers actually want to sign up.",
+      "facts": []
+    },
+    {
+      "id": "sam-s06:t07",
+      "speaker": "wren",
+      "text": "I'm stepping back out of character now. You landed the result well, but you leaned on we so much that what you personally did got lost in the story. Did you notice that?",
+      "facts": [
+        "sam-f13"
+      ]
+    },
+    {
+      "id": "sam-s06:t08",
+      "speaker": "user",
+      "text": "Yeah, you're totally right. I say we so much that my own part in the whole thing just gets buried, mostly because I'm used to making sure the staff gets credit.",
+      "facts": [
+        "sam-f13"
+      ]
+    },
+    {
+      "id": "sam-s06:t09",
+      "speaker": "wren",
+      "text": "That habit makes you a great manager, but Pellwick needs to see your fingerprints on the project. Want to take that middle section again and tell me what you owned?",
+      "facts": []
+    },
+    {
+      "id": "sam-s06:t10",
+      "speaker": "user",
+      "text": "Okay, let me try that part again. When our numbers dipped, I drafted the new checkout prompts, I created the daily tracking sheet, and I personally trained any cashier who wasn't comfortable pitching the perks.",
+      "facts": []
+    },
+    {
+      "id": "sam-s06:t11",
+      "speaker": "wren",
+      "text": "That made your leadership crystal clear. How did that feel to say?",
+      "facts": []
+    },
+    {
+      "id": "sam-s06:t12",
+      "speaker": "user",
+      "text": "A little weird at first, like I'm bragging, but honestly it does make me sound like the one steering the ship.",
+      "facts": []
+    },
+    {
+      "id": "sam-s06:t13",
+      "speaker": "wren",
+      "text": "It shows accountability, not bragging. Would you like to try one more question, or wrap up here?",
+      "facts": []
+    },
+    {
+      "id": "sam-s06:t14",
+      "speaker": "user",
+      "text": "Let's wrap up for today. I've got an early shift tomorrow and my brain is pretty fried.",
+      "facts": []
+    },
+    {
+      "id": "sam-s06:t15",
+      "speaker": "wren",
+      "text": "Rest matters just as much as practice. Should we do a short check-in after your shift tomorrow?",
+      "facts": []
+    },
+    {
+      "id": "sam-s06:t16",
+      "speaker": "user",
+      "text": "Yeah, that'd be really nice. Let's do tomorrow evening.",
+      "facts": []
+    }
+  ]
+}

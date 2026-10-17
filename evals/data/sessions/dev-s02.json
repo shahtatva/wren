@@ -1,0 +1,107 @@
+{
+  "id": "dev-s02",
+  "persona": "dev",
+  "date": "2026-09-05",
+  "mode": "mock",
+  "generator": "gemini-3.8-flash",
+  "turns": [
+    {
+      "id": "dev-s02:t01",
+      "speaker": "wren",
+      "text": "Hi Dev. I'm stepping into the interviewer role now for our mock screen. Ready for your first question?",
+      "facts": []
+    },
+    {
+      "id": "dev-s02:t02",
+      "speaker": "user",
+      "text": "Hey Wren. Yeah, I'm ready, let's dive in.",
+      "facts": []
+    },
+    {
+      "id": "dev-s02:t03",
+      "speaker": "wren",
+      "text": "Thanks for coming in today, Dev. Can you walk me through a data project from your portfolio and share one key finding?",
+      "facts": []
+    },
+    {
+      "id": "dev-s02:t04",
+      "speaker": "user",
+      "text": "Sure! For my portfolio, I pulled a public bike-share dataset and analyzed the trip records using SQL. One key pattern I found was that weekend rides ran forty percent longer than weekday rides, mostly because people took leisure routes along the park.",
+      "facts": [
+        "dev-f03"
+      ]
+    },
+    {
+      "id": "dev-s02:t05",
+      "speaker": "wren",
+      "text": "That is a clean finding. How did you structure your SQL query to connect the trip details with station locations?",
+      "facts": []
+    },
+    {
+      "id": "dev-s02:t06",
+      "speaker": "user",
+      "text": "I joined the trip log with the station table on the station ID using an inner join. I try to explain SQL clearly, kind of the way I used to explain math to my students, breaking each clause down into simple steps.",
+      "facts": [
+        "dev-f13"
+      ]
+    },
+    {
+      "id": "dev-s02:t07",
+      "speaker": "wren",
+      "text": "That makes the logic easy to track. How do you view the overall technical difficulty of the projects you've built?",
+      "facts": []
+    },
+    {
+      "id": "dev-s02:t08",
+      "speaker": "user",
+      "text": "Well, to be honest, I catch myself underselling my technical work and telling people my projects are really just spreadsheets with a database skin.",
+      "facts": [
+        "dev-f12"
+      ]
+    },
+    {
+      "id": "dev-s02:t09",
+      "speaker": "wren",
+      "text": "I'm stepping out of the interviewer role now. You walked through that join with real clarity, but you undercut your technical work by calling your projects just spreadsheets. Did you catch that slip?",
+      "facts": [
+        "dev-f12"
+      ]
+    },
+    {
+      "id": "dev-s02:t10",
+      "speaker": "user",
+      "text": "Yeah, totally. I have a habit of underselling my technical work by calling my projects just spreadsheets whenever I start second-guessing myself.",
+      "facts": [
+        "dev-f12"
+      ]
+    },
+    {
+      "id": "dev-s02:t11",
+      "speaker": "wren",
+      "text": "Own the technical skill, because writing those queries took real effort. It also stood out that you explain SQL clearly, the way you used to explain math to your students. Does that teaching mindset help keep you steady?",
+      "facts": [
+        "dev-f13"
+      ]
+    },
+    {
+      "id": "dev-s02:t12",
+      "speaker": "user",
+      "text": "It really does. When I explain SQL clearly like I used to explain math to my students, I stop worrying and just focus on helping the other person understand.",
+      "facts": [
+        "dev-f13"
+      ]
+    },
+    {
+      "id": "dev-s02:t13",
+      "speaker": "wren",
+      "text": "Keep that teaching clarity, and drop the spreadsheet apologies for good. Want to try one more quick question to practice that?",
+      "facts": []
+    },
+    {
+      "id": "dev-s02:t14",
+      "speaker": "user",
+      "text": "Yeah, let's do one more. I'm ready.",
+      "facts": []
+    }
+  ]
+}

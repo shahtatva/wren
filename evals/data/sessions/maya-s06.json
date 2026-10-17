@@ -1,0 +1,111 @@
+{
+  "id": "maya-s06",
+  "persona": "maya",
+  "date": "2026-09-29",
+  "mode": "mock",
+  "generator": "gemini-3.8-flash",
+  "turns": [
+    {
+      "id": "maya-s06:t01",
+      "speaker": "wren",
+      "text": "Hey Maya, ready for your Quillbase mock? I'm stepping into the hiring manager role now. Could you share an example of a project where you took raw numbers and solved an operational problem?",
+      "facts": []
+    },
+    {
+      "id": "maya-s06:t02",
+      "speaker": "user",
+      "text": "Yeah, definitely. Back during my graduate program, the university library had zero visibility into room usage. I created a Tableau dashboard tracking study room reservations, and the campus library still relies on it today to manage bookings.",
+      "facts": [
+        "maya-f05"
+      ]
+    },
+    {
+      "id": "maya-s06:t03",
+      "speaker": "wren",
+      "text": "That shows real initiative. How would you apply that same analytical habit to building an outbound territory for Quillbase?",
+      "facts": []
+    },
+    {
+      "id": "maya-s06:t04",
+      "speaker": "user",
+      "text": "Well, in SaaS sales, you can't just blindly dial down a list. I'd look at account engagement and intent signals the same way, prioritizing accounts that show real activity so I'm not wasting time on cold leads.",
+      "facts": []
+    },
+    {
+      "id": "maya-s06:t05",
+      "speaker": "wren",
+      "text": "That makes sense. That covers what I wanted to ask, so do you have any questions for me about the team or the role?",
+      "facts": []
+    },
+    {
+      "id": "maya-s06:t06",
+      "speaker": "user",
+      "text": "Um, nope, honestly you covered everything I was wondering about. I think I'm good on my end!",
+      "facts": []
+    },
+    {
+      "id": "maya-s06:t07",
+      "speaker": "wren",
+      "text": "Stepping out of the interviewer role now. How did that feel from your side?",
+      "facts": []
+    },
+    {
+      "id": "maya-s06:t08",
+      "speaker": "user",
+      "text": "It felt pretty comfortable, honestly. I think the dashboard example came out a lot smoother than my stories usually do.",
+      "facts": []
+    },
+    {
+      "id": "maya-s06:t09",
+      "speaker": "wren",
+      "text": "Your dashboard story landed really well. But you completely skipped asking me anything when I opened the floor at the end. What happened there?",
+      "facts": [
+        "maya-f08"
+      ]
+    },
+    {
+      "id": "maya-s06:t10",
+      "speaker": "user",
+      "text": "Ugh, you caught me. Whenever an interview wraps up, I always completely forget to ask questions of my own. I get so relieved to be done talking that my mind just blanks out.",
+      "facts": [
+        "maya-f08"
+      ]
+    },
+    {
+      "id": "maya-s06:t11",
+      "speaker": "wren",
+      "text": "Leaving without questions can make you seem uninterested. What if you kept two questions written on a sticky note right in front of you?",
+      "facts": []
+    },
+    {
+      "id": "maya-s06:t12",
+      "speaker": "user",
+      "text": "Yeah, having a sticky note right on my monitor would keep me from spacing out. What kind of question works best for a BDR screen?",
+      "facts": []
+    },
+    {
+      "id": "maya-s06:t13",
+      "speaker": "wren",
+      "text": "Ask what distinguishes their top rep from the rest of the team. How does that one feel to say out loud?",
+      "facts": []
+    },
+    {
+      "id": "maya-s06:t14",
+      "speaker": "user",
+      "text": "I like that a lot. What distinguishes your top-performing BDR from everyone else? It feels sharp and shows I care about hitting quota.",
+      "facts": []
+    },
+    {
+      "id": "maya-s06:t15",
+      "speaker": "wren",
+      "text": "That sounded crisp and natural. Do you want to run the ending one more time to lock it in?",
+      "facts": []
+    },
+    {
+      "id": "maya-s06:t16",
+      "speaker": "user",
+      "text": "Yeah, let's do a quick reset on the ending, just so I nail it.",
+      "facts": []
+    }
+  ]
+}

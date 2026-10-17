@@ -1,0 +1,107 @@
+{
+  "id": "dev-s09",
+  "persona": "dev",
+  "date": "2026-10-08",
+  "mode": "checkin",
+  "generator": "gemini-3.8-flash",
+  "turns": [
+    {
+      "id": "dev-s09:t01",
+      "speaker": "wren",
+      "text": "Hey Dev. How are you holding up today?",
+      "facts": []
+    },
+    {
+      "id": "dev-s09:t02",
+      "speaker": "user",
+      "text": "Hey Wren. Honestly, pretty surprised. An unexpected email popped into my inbox this morning.",
+      "facts": []
+    },
+    {
+      "id": "dev-s09:t03",
+      "speaker": "wren",
+      "text": "Surprises can go either way in a job search. What landed in your inbox?",
+      "facts": []
+    },
+    {
+      "id": "dev-s09:t04",
+      "speaker": "user",
+      "text": "Well, you remember Tarnwell, right? A recruiter from Tarnwell actually reached out to me today about a junior analyst role on a completely different team over there.",
+      "facts": [
+        "dev-f09"
+      ]
+    },
+    {
+      "id": "dev-s09:t05",
+      "speaker": "wren",
+      "text": "That is a real turn after last month. How did it feel when you saw their name again?",
+      "facts": []
+    },
+    {
+      "id": "dev-s09:t06",
+      "speaker": "user",
+      "text": "At first I was bracing for some automated rejection survey or something. But she said they liked my background from before, and this position opened up under a different manager.",
+      "facts": []
+    },
+    {
+      "id": "dev-s09:t07",
+      "speaker": "wren",
+      "text": "It means you left a solid impression even when that first team passed. Did she mention what the next step looks like?",
+      "facts": []
+    },
+    {
+      "id": "dev-s09:t08",
+      "speaker": "user",
+      "text": "Yeah, she asked if I'm open to doing a quick introductory phone chat sometime early next week to go over the scope.",
+      "facts": []
+    },
+    {
+      "id": "dev-s09:t09",
+      "speaker": "wren",
+      "text": "That sounds like a comfortable way back into conversation with them. Are you leaning toward taking the call?",
+      "facts": []
+    },
+    {
+      "id": "dev-s09:t10",
+      "speaker": "user",
+      "text": "Oh, definitely. I replied and said I'd love to chat. I guess I'm just trying not to get my hopes up too much after what happened the first round.",
+      "facts": []
+    },
+    {
+      "id": "dev-s09:t11",
+      "speaker": "wren",
+      "text": "That is very natural. A different team often means an entirely fresh slate, though. What feels different to you this time around?",
+      "facts": []
+    },
+    {
+      "id": "dev-s09:t12",
+      "speaker": "user",
+      "text": "Well, back in September I froze a bit on the technical side and doubted everything. But I've had more practice since then, so I feel a little steadier.",
+      "facts": []
+    },
+    {
+      "id": "dev-s09:t13",
+      "speaker": "wren",
+      "text": "You have logged a lot of hours since that first screen. Would you like to practice a quick introduction for that recruiter call, or just take today to let the news settle?",
+      "facts": []
+    },
+    {
+      "id": "dev-s09:t14",
+      "speaker": "user",
+      "text": "I think I just want to let it sink in today, maybe review the job description tonight and take a breather.",
+      "facts": []
+    },
+    {
+      "id": "dev-s09:t15",
+      "speaker": "wren",
+      "text": "Giving yourself room to breathe is a good call. Do you want to check in again once you lock down a time for the call?",
+      "facts": []
+    },
+    {
+      "id": "dev-s09:t16",
+      "speaker": "user",
+      "text": "Yeah, let's do that. Once she confirms the day, I'll hop back on here and we can prep. Thanks, Wren.",
+      "facts": []
+    }
+  ]
+}

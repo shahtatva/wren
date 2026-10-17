@@ -1,0 +1,109 @@
+{
+  "id": "maya-s10",
+  "persona": "maya",
+  "date": "2026-10-14",
+  "mode": "mock",
+  "generator": "gemini-3.7-flash",
+  "turns": [
+    {
+      "id": "maya-s10:t01",
+      "speaker": "wren",
+      "text": "Welcome back, Maya. We have time to practice before the big panel, so how are you feeling heading into today?",
+      "facts": []
+    },
+    {
+      "id": "maya-s10:t02",
+      "speaker": "user",
+      "text": "Honestly, I'm pretty stressed out. I get so nervous before panel interviews because my mind just goes totally blank whenever there are more than two people in the room.",
+      "facts": [
+        "maya-f15"
+      ]
+    },
+    {
+      "id": "maya-s10:t03",
+      "speaker": "wren",
+      "text": "That freeze response is so common when multiple pairs of eyes are on you. Let's practice easing into it. I'm stepping into the interviewer chair now. Maya, can you tell us about a time you had to run high-volume outreach on short notice?",
+      "facts": []
+    },
+    {
+      "id": "maya-s10:t04",
+      "speaker": "user",
+      "text": "Yeah, definitely. Back during my master's, our career fair suddenly lost several partners, so we had a serious sponsor gap to fix fast. I pulled our directory and cold-called forty alumni across a single week, and I managed to secure three sponsors just in time.",
+      "facts": [
+        "maya-f03"
+      ]
+    },
+    {
+      "id": "maya-s10:t05",
+      "speaker": "wren",
+      "text": "I'm stepping out of the interviewer role now. Leading with that outcome gave the story real weight right away. How did your breathing feel while you were delivering it?",
+      "facts": []
+    },
+    {
+      "id": "maya-s10:t06",
+      "speaker": "user",
+      "text": "A little rushed, honestly. My heart was pounding like it does when I picture all those interviewers staring back at me.",
+      "facts": []
+    },
+    {
+      "id": "maya-s10:t07",
+      "speaker": "wren",
+      "text": "Rushing is your body trying to get out of the spotlight faster. Try pausing for two full seconds before you start your first sentence. Do you want to try the same answer again with that pause?",
+      "facts": []
+    },
+    {
+      "id": "maya-s10:t08",
+      "speaker": "user",
+      "text": "Let's do a follow-up question instead, just to see if I can stay calm on my feet.",
+      "facts": []
+    },
+    {
+      "id": "maya-s10:t09",
+      "speaker": "wren",
+      "text": "Good call. Stepping back into interviewer mode now. What was your pitch when you got those alumni on the phone?",
+      "facts": []
+    },
+    {
+      "id": "maya-s10:t10",
+      "speaker": "user",
+      "text": "I kept it short and personal. I congratulated them on their recent promotions if they had one, explained our student turnout, and asked for ten minutes to chat about our tiers.",
+      "facts": []
+    },
+    {
+      "id": "maya-s10:t11",
+      "speaker": "wren",
+      "text": "Stepping back out. That was steady and directly on point without any rambling. Did that pause feel awkward to hold?",
+      "facts": []
+    },
+    {
+      "id": "maya-s10:t12",
+      "speaker": "user",
+      "text": "It felt like an eternity in my head, but I guess it sounded normal out loud.",
+      "facts": []
+    },
+    {
+      "id": "maya-s10:t13",
+      "speaker": "wren",
+      "text": "It sounded completely confident to me. Your story already proves you can handle cold pressure. What is your plan for the half hour before you log on?",
+      "facts": []
+    },
+    {
+      "id": "maya-s10:t14",
+      "speaker": "user",
+      "text": "I think I'll step away from my laptop, get a big glass of water, and just do some deep breathing.",
+      "facts": []
+    },
+    {
+      "id": "maya-s10:t15",
+      "speaker": "wren",
+      "text": "That will ground you much better than staring at notes. Do you feel ready to pack up our session for the afternoon?",
+      "facts": []
+    },
+    {
+      "id": "maya-s10:t16",
+      "speaker": "user",
+      "text": "Yeah, I really do. Thanks for walking through this with me, Wren.",
+      "facts": []
+    }
+  ]
+}

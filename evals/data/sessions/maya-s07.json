@@ -1,0 +1,121 @@
+{
+  "id": "maya-s07",
+  "persona": "maya",
+  "date": "2026-10-03",
+  "mode": "checkin",
+  "generator": "gemini-3.7-flash",
+  "turns": [
+    {
+      "id": "maya-s07:t01",
+      "speaker": "wren",
+      "text": "Hey Maya. Good to hear your voice this morning. How are you feeling heading into the weekend?",
+      "facts": []
+    },
+    {
+      "id": "maya-s07:t02",
+      "speaker": "user",
+      "text": "Hey Wren! I'm doing pretty good, just trying to catch my breath after all that prep earlier in the week.",
+      "facts": []
+    },
+    {
+      "id": "maya-s07:t03",
+      "speaker": "wren",
+      "text": "You put in some heavy work lately. Did anything shift on your calendar?",
+      "facts": []
+    },
+    {
+      "id": "maya-s07:t04",
+      "speaker": "user",
+      "text": "Yeah, actually. Velloway Analytics moved our recruiter screen back to Friday, October ninth at eleven in the morning.",
+      "facts": [
+        "maya-f10"
+      ]
+    },
+    {
+      "id": "maya-s07:t05",
+      "speaker": "wren",
+      "text": "That gives you almost a full week of breathing room. Does that extra space feel helpful or annoying?",
+      "facts": []
+    },
+    {
+      "id": "maya-s07:t06",
+      "speaker": "user",
+      "text": "A little of both, honestly. I was geared up to get it over with, but now I have time to fix some details in my stories.",
+      "facts": []
+    },
+    {
+      "id": "maya-s07:t07",
+      "speaker": "wren",
+      "text": "A brief pause can be a real gift if you use it right. Which story are you thinking about polishing?",
+      "facts": []
+    },
+    {
+      "id": "maya-s07:t08",
+      "speaker": "user",
+      "text": "Well, I was looking back over my old slides from the consulting club project.",
+      "facts": []
+    },
+    {
+      "id": "maya-s07:t09",
+      "speaker": "wren",
+      "text": "I remember that one from our very first conversation. What did you find in your notes?",
+      "facts": []
+    },
+    {
+      "id": "maya-s07:t10",
+      "speaker": "user",
+      "text": "I realized I had the wrong metric in my head earlier. The consulting club result was actually a fifteen percent drop in donor churn once the final quarter's data came in.",
+      "facts": [
+        "maya-f02"
+      ]
+    },
+    {
+      "id": "maya-s07:t11",
+      "speaker": "wren",
+      "text": "Fifteen percent is a solid, grounded number to share with a recruiter. How does it feel saying that out loud?",
+      "facts": []
+    },
+    {
+      "id": "maya-s07:t12",
+      "speaker": "user",
+      "text": "Honestly, it feels much better. Before, I was worried I was misremembering the impact, so having the exact figure makes me feel more confident.",
+      "facts": []
+    },
+    {
+      "id": "maya-s07:t13",
+      "speaker": "wren",
+      "text": "Solid proof takes away the wobble. Do you want to try delivering that line once right now?",
+      "facts": []
+    },
+    {
+      "id": "maya-s07:t14",
+      "speaker": "user",
+      "text": "You know what, I think I'd rather just give my voice a rest today and not overthink it.",
+      "facts": []
+    },
+    {
+      "id": "maya-s07:t15",
+      "speaker": "wren",
+      "text": "Resting is part of the work too. What are you doing to unwind today?",
+      "facts": []
+    },
+    {
+      "id": "maya-s07:t16",
+      "speaker": "user",
+      "text": "I'm meeting a friend for lunch downtown, and then we're going for a long walk near the waterfront without my phone.",
+      "facts": []
+    },
+    {
+      "id": "maya-s07:t17",
+      "speaker": "wren",
+      "text": "That sounds like a great reset. Will you promise to leave the interview notes at home?",
+      "facts": []
+    },
+    {
+      "id": "maya-s07:t18",
+      "speaker": "user",
+      "text": "Haha, I promise. No SaaS talk until Monday morning.",
+      "facts": []
+    }
+  ]
+}

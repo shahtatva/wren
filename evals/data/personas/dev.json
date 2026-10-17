@@ -1,0 +1,35 @@
+{
+  "id": "dev",
+  "name": "Dev Raman",
+  "profile": "Dev (he/him) taught high-school math for seven years and is moving into data analyst roles. He taught himself SQL and Python.",
+  "facts": [
+    {"id": "dev-f01", "kind": "story", "text": "Built a grading dashboard in Excel that tracked quiz scores for 120 students and flagged who was falling behind"},
+    {"id": "dev-f02", "kind": "story", "text": "The grading dashboard was actually built in Google Sheets with Apps Script, not Excel", "supersedes": "dev-f01"},
+    {"id": "dev-f03", "kind": "story", "text": "Analyzed a public bike-share dataset in SQL for his portfolio and found weekend rides ran 40 percent longer than weekday rides"},
+    {"id": "dev-f04", "kind": "story", "text": "Cleaned up the school's attendance records by merging three spreadsheets and removing about 300 duplicate entries"},
+    {"id": "dev-f05", "kind": "story", "text": "Got the math department to adopt weekly exit tickets after a pilot in his class raised quiz scores by 10 points"},
+    {"id": "dev-f06", "kind": "episode", "text": "Vireline Health sent a SQL take-home due Monday October 5"},
+    {"id": "dev-f07", "kind": "episode", "text": "Vireline Health moved the SQL take-home deadline to Wednesday October 7", "supersedes": "dev-f06"},
+    {"id": "dev-f08", "kind": "episode", "text": "Tarnwell rejected him after the technical screen"},
+    {"id": "dev-f09", "kind": "episode", "text": "A Tarnwell recruiter reached out about a junior analyst opening on a different team", "supersedes": "dev-f08"},
+    {"id": "dev-f10", "kind": "episode", "text": "Had a technical screen at Ottergrove that went well after he explained a window function step by step"},
+    {"id": "dev-f11", "kind": "episode", "text": "Wants a referral at Ledgerly, where his former teaching colleague Marcus now works"},
+    {"id": "dev-f12", "kind": "feedback", "text": "Undersells his technical work by calling his projects just spreadsheets"},
+    {"id": "dev-f13", "kind": "feedback", "text": "Explains SQL clearly, the way he used to explain math to his students"},
+    {"id": "dev-f14", "kind": "feedback", "text": "Leans on teacher jargon like scaffolding that interviewers may not follow"},
+    {"id": "dev-f15", "kind": "vibe", "text": "Felt discouraged and wondered if leaving teaching was a mistake after the Tarnwell rejection"},
+    {"id": "dev-f16", "kind": "vibe", "text": "Felt upbeat and more confident after the Ottergrove technical screen"}
+  ],
+  "sessions": [
+    {"id": "dev-s01", "date": "2026-09-02", "mode": "checkin", "outline": "First session. Dev explains he is leaving teaching for data analyst roles and teaching himself SQL and Python. He tells the grading dashboard story and says he built it in Excel.", "facts": ["dev-f01"]},
+    {"id": "dev-s02", "date": "2026-09-05", "mode": "mock", "outline": "Mock analyst screen. Dev walks through his bike-share SQL project and explains a join clearly, but calls his projects just spreadsheets. Wren debriefs.", "facts": ["dev-f03", "dev-f12", "dev-f13"]},
+    {"id": "dev-s03", "date": "2026-09-11", "mode": "checkin", "outline": "Tarnwell rejected him after the technical screen. He feels discouraged and wonders if leaving teaching was a mistake.", "facts": ["dev-f08", "dev-f15"]},
+    {"id": "dev-s04", "date": "2026-09-16", "mode": "checkin", "outline": "Logistics: Vireline Health sent him a SQL take-home with a deadline.", "facts": ["dev-f06"]},
+    {"id": "dev-s05", "date": "2026-09-21", "mode": "mock", "outline": "Mock behavioral round. He tells the exit-tickets story, and Wren notices he leans on teacher jargon like scaffolding.", "facts": ["dev-f05", "dev-f14"]},
+    {"id": "dev-s06", "date": "2026-09-25", "mode": "checkin", "outline": "His technical screen at Ottergrove went well. He explained a window function step by step and feels upbeat.", "facts": ["dev-f10", "dev-f16"]},
+    {"id": "dev-s07", "date": "2026-09-30", "mode": "checkin", "outline": "Vireline Health moved his take-home deadline. He also corrects the grading dashboard story: it was Google Sheets with Apps Script, not Excel.", "facts": ["dev-f07", "dev-f02"]},
+    {"id": "dev-s08", "date": "2026-10-05", "mode": "mock", "outline": "Mock hiring-manager round. He tells the attendance cleanup story and undersells it again.", "facts": ["dev-f04", "dev-f12"]},
+    {"id": "dev-s09", "date": "2026-10-08", "mode": "checkin", "outline": "Surprise: a Tarnwell recruiter is back in touch about a different opening.", "facts": ["dev-f09"]},
+    {"id": "dev-s10", "date": "2026-10-13", "mode": "checkin", "outline": "Wren nudges him toward a referral and he names a former colleague at Ledgerly. He briefly retells the bike-share project.", "facts": ["dev-f11", "dev-f03"]}
+  ]
+}

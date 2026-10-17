@@ -1,0 +1,99 @@
+{
+  "id": "maya-s02",
+  "persona": "maya",
+  "date": "2026-09-04",
+  "mode": "mock",
+  "generator": "gemini-3.8-flash",
+  "turns": [
+    {
+      "id": "maya-s02:t01",
+      "speaker": "wren",
+      "text": "Hey Maya. I'm ready to put on my hiring manager hat for our mock screen whenever you are. Should we jump right in?",
+      "facts": []
+    },
+    {
+      "id": "maya-s02:t02",
+      "speaker": "user",
+      "text": "Hey Wren. Yeah, let's do it, I've got my glass of water ready and I'm as set as I'll ever be.",
+      "facts": []
+    },
+    {
+      "id": "maya-s02:t03",
+      "speaker": "wren",
+      "text": "Stepping into character now. Thanks for jumping on today, Maya. Could you start by telling me a little about yourself?",
+      "facts": []
+    },
+    {
+      "id": "maya-s02:t04",
+      "speaker": "user",
+      "text": "Sure, well, um, I actually started out thinking I'd do pure data analysis, but during my program I realized I enjoyed talking with people way more. So I took classes in communications and project management, and I worked on group projects where I had to coordinate across different teams, and then I got involved in student associations where we planned events and handled outreach, which made me realize I really want to be customer-facing and talk to prospects every day.",
+      "facts": []
+    },
+    {
+      "id": "maya-s02:t05",
+      "speaker": "wren",
+      "text": "Got it. Outbound roles take a lot of grit, so could you tell me about a time you did cold outreach to hit a target?",
+      "facts": []
+    },
+    {
+      "id": "maya-s02:t06",
+      "speaker": "user",
+      "text": "Definitely. When we organized our student career fair, we suddenly had a sponsor drop out right before the event, so I picked up the phone and cold-called forty alumni in just one week. Most were surprised to hear from a student out of nowhere, but I ended up landing three sponsors to fill the gap.",
+      "facts": [
+        "maya-f03"
+      ]
+    },
+    {
+      "id": "maya-s02:t07",
+      "speaker": "wren",
+      "text": "That wraps up our quick screen, and I'm stepping out of interviewer mode now. How did that feel from your side?",
+      "facts": []
+    },
+    {
+      "id": "maya-s02:t08",
+      "speaker": "user",
+      "text": "Whew, glad that's done. Honestly, my opening felt pretty messy, but how did it sound to you?",
+      "facts": []
+    },
+    {
+      "id": "maya-s02:t09",
+      "speaker": "wren",
+      "text": "Your alumni story was crisp, but your answer on tell me about yourself rambled and ran past two minutes. Did you notice where it got tangled?",
+      "facts": [
+        "maya-f06"
+      ]
+    },
+    {
+      "id": "maya-s02:t10",
+      "speaker": "user",
+      "text": "Yeah, I totally rambled through tell me about yourself and went way over two minutes before I even mentioned sales. I got stuck listing courses instead of focusing on what's relevant.",
+      "facts": [
+        "maya-f06"
+      ]
+    },
+    {
+      "id": "maya-s02:t11",
+      "speaker": "wren",
+      "text": "That happens easily when you trace the whole timeline. What if you anchor it on where you are today and why you want tech sales?",
+      "facts": []
+    },
+    {
+      "id": "maya-s02:t12",
+      "speaker": "user",
+      "text": "That makes total sense. I want to write out a couple bullet points for that structure so I don't wander off next time.",
+      "facts": []
+    },
+    {
+      "id": "maya-s02:t13",
+      "speaker": "wren",
+      "text": "Writing bullet points instead of a script will keep it sounding natural. How are your nerves holding up after doing that run?",
+      "facts": []
+    },
+    {
+      "id": "maya-s02:t14",
+      "speaker": "user",
+      "text": "A lot better now, actually. Getting the first clunky practice run out of the way always takes the edge off.",
+      "facts": []
+    }
+  ]
+}
