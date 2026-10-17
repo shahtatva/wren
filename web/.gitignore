@@ -42,3 +42,6 @@ next-env.d.ts
 
 # keep the template, it holds no secrets
 !.env.example
+
+# M0 echo spike clip, made by python -m app.tools.echo_spike clip
+/public/dev/

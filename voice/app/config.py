@@ -3,6 +3,7 @@
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import UUID
 
 from dotenv import load_dotenv
 
@@ -44,4 +45,46 @@ def load_settings() -> Settings:
         database_url=_require("DATABASE_URL"),
         supabase_url=_require("SUPABASE_URL"),
         supabase_secret_key=_require("SUPABASE_SECRET_KEY"),
+    )
+
+
+@dataclass(frozen=True)
+class VoiceSettings:
+    """Settings only the voice server reads, so the eval harness runs without a Deepgram key."""
+
+    deepgram_api_key: str
+    deepgram_stt_model: str
+    deepgram_tts_model: str
+    groq_chat_model: str
+    groq_chat_fallback_model: str | None  # Groq limits are per model, so a second one absorbs 429s
+    allowed_origins: tuple[str, ...]
+    dev_user_id: UUID | None  # local-only identity until real sign-in exists
+
+
+def _dev_user_id() -> UUID | None:
+    value = os.environ.get("WREN_DEV_USER_ID", "").strip()
+    if not value:
+        return None
+    try:
+        return UUID(value)
+    except ValueError:
+        raise MissingSetting("WREN_DEV_USER_ID must be a user id from auth.users (a UUID).") from None
+
+
+def allowed_origins() -> tuple[str, ...]:
+    """Browser origins that may use the voice server. Read at startup for CORS."""
+    load_dotenv(ENV_FILE, override=False)
+    return tuple(o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(",") if o.strip())
+
+
+def load_voice_settings() -> VoiceSettings:
+    load_dotenv(ENV_FILE, override=False)
+    return VoiceSettings(
+        deepgram_api_key=_require("DEEPGRAM_API_KEY"),
+        deepgram_stt_model=_require("DEEPGRAM_STT_MODEL"),
+        deepgram_tts_model=_require("DEEPGRAM_TTS_MODEL"),
+        groq_chat_model=_require("GROQ_CHAT_MODEL"),
+        groq_chat_fallback_model=os.environ.get("GROQ_CHAT_FALLBACK_MODEL", "").strip() or None,
+        allowed_origins=tuple(o.strip() for o in _require("ALLOWED_ORIGINS").split(",") if o.strip()),
+        dev_user_id=_dev_user_id(),
     )

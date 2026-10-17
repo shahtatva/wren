@@ -1,7 +1,7 @@
 """Plain data types shared by extraction, storage and retrieval."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, time
 from typing import Literal
 
 Speaker = Literal["user", "wren"]
@@ -50,6 +50,26 @@ class PipelineItem:
 class Extraction:
     memories: list[ExtractedMemory]
     pipeline: list[PipelineItem]
+
+
+@dataclass(frozen=True)
+class Profile:
+    display_name: str | None
+    summary: str
+    target_roles: tuple[str, ...]
+    timezone: str
+
+
+@dataclass(frozen=True)
+class PipelineEntry:
+    """A current pipeline row, as /turn shows it. Dates and times are local to the user."""
+
+    company: str
+    role: str | None
+    stage: str
+    next_date: date | None
+    next_time: time | None
+    notes: str | None
 
 
 @dataclass(frozen=True)

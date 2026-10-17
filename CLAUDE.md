@@ -82,6 +82,8 @@ Web (Next.js 16, run from `web/`):
 - Install: `npm install`
 - Dev server: `npm run dev` (http://localhost:3000)
 - Lint / build: `npm run lint`, `npm run build`
+- Tests: `npm test`
+- Browser end-to-end, with both servers running: install `web/e2e/requirements.txt` into `voice/.venv`, then run `python web/e2e/voice_e2e.py` from the repo root
 - Next.js 16 differs from older versions. Check `web/node_modules/next/dist/docs/` before using a Next API (see `web/AGENTS.md`).
 
 Voice server (FastAPI, run from `voice/`):
@@ -89,9 +91,27 @@ Voice server (FastAPI, run from `voice/`):
 - One-time setup: `python -m venv .venv`, then activate it (`.venv\Scripts\activate` on Windows, `source .venv/bin/activate` elsewhere), then `pip install -r requirements-dev.txt`
 - Run: `uvicorn app.main:app --reload` (health check: http://localhost:8000/health)
 - Tests: `pytest`
+- Database tests: `WREN_DB_TESTS=1 pytest`. They apply the migrations in a transaction and roll it back.
+- Talk to Wren locally:
+  1. Set `WREN_DEV_USER_ID` in `voice/.env` to an `auth.users` id. It's accepted only from this machine.
+  2. Run this server and the web app, then open http://localhost:3000/talk.
+  3. The timing panel shows in dev, or with `?debug=1`.
+- Latency bench, with the server running: `python -m app.tools.bench --barge-in`
+- Time-to-first-audio report from `voice/logs/turns.jsonl`: `python -m app.tools.ttfa_report`
+- Check that no key reached the browser, after `npm run build`: `python -m app.tools.leak_check`
+- Audition Wren's voice: `python -m app.tools.voices`
 
-Evals (run from the repo root):
+Evals (run from the repo root, with `voice/.venv` active):
 
-- `python -m evals.run --experiment E1` (E1–E5; placeholder until the harness exists)
+- One-time: `pip install -r evals/requirements.txt`
+- Check the eval set: `python -m evals.evalset` (add `--show-probes maya` to hand-check probes)
+- Generate missing transcripts: `python -m evals.generate` (`--model` picks another Gemini model)
+- Run an experiment: `python -m evals.run --experiment E1 --change "what changed and why"` (E1–E3; `--variant` runs a subset). Each run rebuilds the `evals` schema in the dev database and loads the eval set into it. API outputs are cached in `evals/.cache/`.
+- Tests: `pytest evals/tests` from the repo root, and `pytest` from `voice/`
+
+Database (Supabase CLI via npx, from the repo root):
+
+- New migration: `npx supabase@2.121.0 migration new <name>`
+- Apply: `npx supabase@2.121.0 db push --db-url "$DATABASE_URL"`
 
 Env: copy `web/.env.example` to `web/.env.local` and `voice/.env.example` to `voice/.env`.

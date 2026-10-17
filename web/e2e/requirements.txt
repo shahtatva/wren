@@ -1,0 +1,4 @@
+# The browser end-to-end test (web/e2e/voice_e2e.py). Install into voice/.venv, since the
+# test reuses the voice server's tools to synthesize its fake-mic audio.
+-r ../../voice/requirements-dev.txt
+playwright==1.62.0
