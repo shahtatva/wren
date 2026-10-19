@@ -208,45 +208,49 @@ export function Talk() {
         </p>
       ) : null}
 
-      <footer className="flex items-center gap-5 border-t border-feather pt-4 pb-6">
-        <button
-          type="button"
-          onClick={onTalk}
-          aria-label={!started ? "Start talking" : status === "reconnecting" ? "Reconnect" : muted || !hearing ? "Turn the mic on" : "Mute"}
-          className={`relative grid size-20 shrink-0 place-items-center rounded-full text-background transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-wren ${muted ? "bg-foreground/40" : "bg-wren"}`}
-        >
-          <span
-            ref={ring}
-            aria-hidden
-            style={speakingWidth}
-            className={`pointer-events-none absolute -inset-2 rounded-full border-wren ${ringStyle}`}
-          />
-          {status === "thinking" ? (
-            <span aria-hidden className="wren-orbit pointer-events-none absolute -inset-3">
-              <span className="absolute top-0 left-1/2 size-2 -translate-x-1/2 rounded-full bg-wren" />
-            </span>
-          ) : null}
-          <MicGlyph muted={muted} />
-        </button>
-        <form onSubmit={onSend} className="flex min-w-0 flex-1 gap-2">
-          <label htmlFor="message" className="sr-only">
-            Message
-          </label>
-          <input
-            id="message"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder="Or type here"
-            autoComplete="off"
-            className="min-w-0 flex-1 rounded-md border border-feather bg-transparent px-3 py-2 placeholder:text-foreground/50 focus-visible:outline-2 focus-visible:outline-wren"
-          />
+      <footer className="border-t border-feather pt-4 pb-5">
+        <div className="flex items-center gap-5">
           <button
-            type="submit"
-            className="rounded-md px-3 py-2 font-medium text-wren hover:bg-wren/10 focus-visible:outline-2 focus-visible:outline-wren"
+            type="button"
+            onClick={onTalk}
+            aria-label={!started ? "Start talking" : status === "reconnecting" ? "Reconnect" : muted || !hearing ? "Turn the mic on" : "Mute"}
+            className={`relative grid size-20 shrink-0 place-items-center rounded-full text-background transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-wren ${muted ? "bg-foreground/40" : "bg-wren"}`}
           >
-            Send
+            <span
+              ref={ring}
+              aria-hidden
+              style={speakingWidth}
+              className={`pointer-events-none absolute -inset-2 rounded-full border-wren ${ringStyle}`}
+            />
+            {status === "thinking" ? (
+              <span aria-hidden className="wren-orbit pointer-events-none absolute -inset-3">
+                <span className="absolute top-0 left-1/2 size-2 -translate-x-1/2 rounded-full bg-wren" />
+              </span>
+            ) : null}
+            <MicGlyph muted={muted} />
           </button>
-        </form>
+          <form onSubmit={onSend} className="flex min-w-0 flex-1 gap-2">
+            <label htmlFor="message" className="sr-only">
+              Message
+            </label>
+            <input
+              id="message"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder="Or type here"
+              autoComplete="off"
+              className="min-w-0 flex-1 rounded-md border border-feather bg-transparent px-3 py-2 placeholder:text-foreground/50 focus-visible:outline-2 focus-visible:outline-wren"
+            />
+            <button
+              type="submit"
+              className="rounded-md px-3 py-2 font-medium text-wren hover:bg-wren/10 focus-visible:outline-2 focus-visible:outline-wren"
+            >
+              Send
+            </button>
+          </form>
+        </div>
+        {/* Always on screen, so a session that starts by typing is disclosed too (wren-voice boundary 2). */}
+        <p className="mt-3 text-sm text-foreground/70">Wren is an AI, not a person.</p>
       </footer>
 
       {showDebug ? <DebugPanel metrics={timings.map((timing) => timing.metrics)} info={info} /> : null}
