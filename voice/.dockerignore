@@ -1,0 +1,6 @@
+# The image gets the app and its requirements, nothing else: never .env, .venv, logs or tests.
+*
+!app/
+!requirements.txt
+**/__pycache__/
+**/*.pyc
