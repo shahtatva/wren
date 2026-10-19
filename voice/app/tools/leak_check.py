@@ -1,8 +1,9 @@
-"""Check that no key from voice/.env made it into the browser bundle: python -m app.tools.leak_check
+"""Check that no key from voice/.env made it into the web build: python -m app.tools.leak_check
 
-Run it after `npm run build` in web/. It scans everything the browser can download
-(web/.next/static) for each secret value in voice/.env and prints pass or fail per key
-name. It never prints a value.
+Run it after `npm run build` in web/. It scans the whole build (web/.next) except its cache:
+the static files the browser downloads, the prerendered pages and RSC payloads the server
+sends, and the server bundles. web/ holds no secrets at all, so a key anywhere in its build
+is a leak. It prints pass or fail per key name and never prints a value.
 """
 
 import sys
@@ -13,16 +14,19 @@ from dotenv import dotenv_values
 from app.config import ENV_FILE
 
 REPO = Path(__file__).resolve().parents[3]
-STATIC = REPO / "web" / ".next" / "static"
+BUILD = REPO / "web" / ".next"
+SKIP = ("cache",)  # build caches never reach a browser, and they're large
 SECRETS = ("DEEPGRAM_API_KEY", "GROQ_API_KEY", "GEMINI_API_KEY", "SUPABASE_SECRET_KEY", "DATABASE_URL")
 MIN_LENGTH = 8  # shorter values would match by accident
 
 
-def scan(root: Path, secrets: dict[str, str]) -> dict[str, list[str]]:
-    """Files under root that contain each secret, by key name."""
+def scan(root: Path, secrets: dict[str, str], skip: tuple[str, ...] = ()) -> dict[str, list[str]]:
+    """Files under root that contain each secret, by key name. skip names top-level folders to leave out."""
     wanted = {name: value.strip() for name, value in secrets.items() if value and len(value.strip()) >= MIN_LENGTH}
     leaks: dict[str, list[str]] = {}
-    for path in sorted(p for p in root.rglob("*") if p.is_file()):
+    tops = [top for top in root.iterdir() if top.name not in skip]
+    files = [top for top in tops if top.is_file()] + [p for top in tops if top.is_dir() for p in top.rglob("*") if p.is_file()]
+    for path in sorted(files):
         text = path.read_bytes().decode("utf-8", errors="ignore")
         for name, value in wanted.items():
             if value in text:
@@ -31,12 +35,12 @@ def scan(root: Path, secrets: dict[str, str]) -> dict[str, list[str]]:
 
 
 def main() -> int:
-    if not STATIC.exists():
-        print(f"No build at {STATIC}. Run `npm run build` in web/ first.")
+    if not (BUILD / "static").exists():
+        print(f"No build at {BUILD}. Run `npm run build` in web/ first.")
         return 2
     values = dotenv_values(ENV_FILE)
     secrets = {name: values.get(name) or "" for name in SECRETS}
-    leaks = scan(STATIC, secrets)
+    leaks = scan(BUILD, secrets, skip=SKIP)
     for name in SECRETS:
         if not secrets[name]:
             print(f"skip  {name} (not set)")

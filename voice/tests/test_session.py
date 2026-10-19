@@ -1,3 +1,4 @@
+import logging
 import time
 from dataclasses import replace
 from datetime import datetime
@@ -475,3 +476,12 @@ def test_words_before_the_opening_still_replace_it():
         assert end["outcome"] == "continued"
         user, _ = wire.until("user_turn", turn=2)
         assert user["text"] == "Can we practice my Sprout answer?"
+
+
+def test_a_rejected_message_is_logged_without_its_text(caplog):
+    with voice_session(make_runtime(FakeChat([OPENING]), stt=None)) as (ws, wire, _):
+        play(ws, wire, turn=1)
+        with caplog.at_level(logging.INFO, logger="app.voice.session"):
+            ws.send_json({"type": "user_text", "text": "my private story " * 200})
+            wire.quiet(0.2)
+    assert "ignoring a bad client message" in caplog.text and "private story" not in caplog.text

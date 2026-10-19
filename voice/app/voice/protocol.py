@@ -74,8 +74,15 @@ _CLIENT = TypeAdapter(ClientMessage)
 def parse_client(raw: str) -> ClientMessage:
     try:
         return _CLIENT.validate_python(json.loads(raw))
-    except (json.JSONDecodeError, ValidationError) as e:
+    except json.JSONDecodeError as e:  # its message gives a position, never the text
         raise ValueError(f"bad client message: {e}") from None
+    except ValidationError as e:
+        # Name the field and the problem, never the input: that can be a user's private words.
+        problems = "; ".join(
+            f"{'.'.join(str(part) for part in error['loc']) or 'message'}: {error['type']}"
+            for error in e.errors(include_input=False, include_url=False)
+        )
+        raise ValueError(f"bad client message: {problems}") from None
 
 
 def pack_audio(turn: int, seg: int, pcm: bytes) -> bytes:

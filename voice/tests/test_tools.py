@@ -80,3 +80,28 @@ def test_leak_check_ignores_short_or_empty_values(tmp_path):
 
     (tmp_path / "a.js").write_text("x = 1", encoding="utf-8")
     assert scan(tmp_path, {"EMPTY": "", "SHORT": "1"}) == {}
+
+
+def test_leak_check_scans_server_pages_but_not_the_build_cache(tmp_path):
+    from app.tools.leak_check import scan
+
+    (tmp_path / "server" / "app").mkdir(parents=True)
+    (tmp_path / "server" / "app" / "talk.html").write_text("key=sk-live-123456")
+    (tmp_path / "cache").mkdir()
+    (tmp_path / "cache" / "x.bin").write_text("sk-live-123456")
+    leaks = scan(tmp_path, {"GROQ_API_KEY": "sk-live-123456"}, skip=("cache",))
+    assert leaks == {"GROQ_API_KEY": ["server/app/talk.html"]}
+
+
+def test_leak_check_main_fails_on_a_key_in_a_prerendered_page(tmp_path, monkeypatch, capsys):
+    from app.tools import leak_check
+
+    (tmp_path / "static").mkdir()
+    (tmp_path / "static" / "a.js").write_text("x = 1", encoding="utf-8")
+    (tmp_path / "server" / "app").mkdir(parents=True)
+    (tmp_path / "server" / "app" / "talk.rsc").write_text("sk-live-123456", encoding="utf-8")
+    monkeypatch.setattr(leak_check, "BUILD", tmp_path)
+    monkeypatch.setattr(leak_check, "dotenv_values", lambda path: {"GROQ_API_KEY": "sk-live-123456"})
+    assert leak_check.main() == 1
+    out = capsys.readouterr().out
+    assert "FAIL  GROQ_API_KEY found in server/app/talk.rsc" in out and "sk-live-123456" not in out

@@ -44,3 +44,10 @@ def test_audio_header_round_trips_and_wraps_turn_numbers():
     assert unpack_audio(frame) == (1, 3, b"\x01\x02\x03\x04")
     with pytest.raises(ValueError):
         unpack_audio(b"\x00\x01")
+
+
+def test_a_bad_message_error_never_repeats_the_input():
+    story = "my private story " * 200  # over the 2,000-character limit
+    with pytest.raises(ValueError) as caught:
+        parse_client(json.dumps({"type": "user_text", "text": story}))
+    assert "private story" not in str(caught.value) and "string_too_long" in str(caught.value)
