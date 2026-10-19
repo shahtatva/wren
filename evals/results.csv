@@ -1,1 +1,10 @@
 date,commit,experiment,variant,change,recall_at_5,tokens_per_turn,stale_fact_rate,latency_p50_ms,latency_p95_ms
+2026-10-17T17:02:01Z,6ee1f34-dirty,E1,chunk512,"baseline: first run on wren-dev; chunk512 and turn only, atomic waits on Gemini's daily extraction quota",0.983,2104.9,0,453.6,1974.5
+2026-10-17T17:02:01Z,6ee1f34-dirty,E1,turn,"baseline: first run on wren-dev; chunk512 and turn only, atomic waits on Gemini's daily extraction quota",0.917,173.8,0.111,254.0,999.0
+2026-10-19T05:27:19Z,6ee1f34-dirty,E1,atomic,"baseline: first run on wren-dev; atomic arm, extraction by gemini-3.8-flash",1,134.5,0,256.0,1003.2
+2026-10-19T05:45:35Z,6ee1f34-dirty,E2,raw,baseline: first run on wren-dev; extraction by gemini-3.8-flash,1,134.5,0,234.9,982.9
+2026-10-19T05:45:35Z,6ee1f34-dirty,E2,rewrite,baseline: first run on wren-dev; extraction by gemini-3.8-flash,0.967,133.1,0.111,690.5,1100.6
+2026-10-19T05:45:35Z,6ee1f34-dirty,E2,hyde,baseline: first run on wren-dev; extraction by gemini-3.8-flash,0.967,131.9,0,627.6,998.9
+2026-10-19T05:47:31Z,6ee1f34-dirty,E3,vector,baseline: first run on wren-dev; extraction by gemini-3.8-flash,1,134.5,0,232.9,981.1
+2026-10-19T05:47:31Z,6ee1f34-dirty,E3,rrf,baseline: first run on wren-dev; extraction by gemini-3.8-flash,0.917,132.0,0.222,232.2,984.3
+2026-10-19T05:47:31Z,6ee1f34-dirty,E3,rrf_boost,baseline: first run on wren-dev; extraction by gemini-3.8-flash,0.933,133.4,0.111,233.8,982.1
