@@ -165,3 +165,12 @@ def test_a_slow_retrieval_is_dropped_at_the_deadline():
     assert out == ["Got it."] and monotonic() - started < 1.0
     assert timing.retrieval_fallback == "timeout" and timing.memories == 0
     assert "Nothing relevant yet." in chat.messages[0]["content"]
+
+
+def test_the_persona_card_holds_every_boundary():
+    content = build_messages(conversation(), "hi", [], NOW, Tuning())[0]["content"]
+    for rule in (
+        "you are an AI", "No romance", "Never diagnose", "nine one one", "nine eight eight",
+        "someone they trust", "only if they say they are", "under eighteen", "school counselor or career office",
+    ):
+        assert rule in content, rule
