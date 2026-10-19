@@ -84,6 +84,7 @@ Web (Next.js 16, run from `web/`):
 - Lint / build: `npm run lint`, `npm run build`
 - Tests: `npm test`
 - Browser end-to-end, with both servers running: install `web/e2e/requirements.txt` into `voice/.venv`, then run `python web/e2e/voice_e2e.py` from the repo root
+- Full text and voice sessions (the voice one plays `evals/audio/sample.wav` as the fake mic), same setup: `python web/e2e/session_e2e.py [--mode text|voice|both]`
 - Next.js 16 differs from older versions. Check `web/node_modules/next/dist/docs/` before using a Next API (see `web/AGENTS.md`).
 
 Voice server (FastAPI, run from `voice/`):
