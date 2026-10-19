@@ -64,12 +64,16 @@ class FakeGroq:
 
 
 class FakeGemini:
-    def __init__(self, texts):
-        self.texts, self.calls = texts, []
+    """Streams `texts` for every model, except models listed in `errors`, which raise."""
+
+    def __init__(self, texts, errors=None):
+        self.texts, self.errors, self.calls = texts, errors or {}, []
         self.aio = SimpleNamespace(models=SimpleNamespace(generate_content_stream=self._stream))
 
     async def _stream(self, **kwargs):
         self.calls.append(kwargs)
+        if kwargs["model"] in self.errors:
+            raise self.errors[kwargs["model"]]
 
         async def gen():
             for t in self.texts:
@@ -125,6 +129,15 @@ def test_gemini_is_the_last_resort_after_both_groq_models():
     timing = TurnTiming(turn=1, mode="checkin", input="voice")
     out = asyncio.run(collect(make_chat(SETTINGS, VOICE_WITH_BACKUP, groq=groq, gemini=FakeGemini(["Okay."])), timing))
     assert out == ["Okay."] and len(groq.calls) == 2 and timing.model == "gemini-test-flash"
+
+
+def test_gemini_backups_replace_flash_and_are_tried_in_order():
+    voice = VoiceSettings(**{**VOICE.__dict__, "gemini_chat_models": ("gemini-lite-a", "gemini-lite-b")})
+    gemini = FakeGemini(["Okay."], errors={"gemini-lite-a": RateLimited("429")})
+    timing = TurnTiming(1, "checkin", "voice")
+    out = asyncio.run(collect(make_chat(SETTINGS, voice, groq=FakeGroq(error=RateLimited("429")), gemini=gemini), timing))
+    assert out == ["Okay."] and timing.model == "gemini-lite-b"
+    assert [call["model"] for call in gemini.calls] == ["gemini-lite-a", "gemini-lite-b"]
 
 
 def test_when_every_model_fails_the_last_error_propagates():

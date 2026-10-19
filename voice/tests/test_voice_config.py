@@ -24,7 +24,14 @@ def voice_env(monkeypatch):
         monkeypatch.setenv(name, value)
     monkeypatch.delenv("WREN_DEV_USER_ID", raising=False)
     monkeypatch.delenv("GROQ_CHAT_FALLBACK_MODEL", raising=False)
+    monkeypatch.delenv("GEMINI_CHAT_FALLBACK_MODELS", raising=False)
     return monkeypatch
+
+
+def test_gemini_chat_backups_parse_as_an_ordered_list(voice_env):
+    assert config.load_voice_settings().gemini_chat_models == ()
+    voice_env.setenv("GEMINI_CHAT_FALLBACK_MODELS", " gemini-3.5-flash-lite, gemini-3.1-flash-lite ,")
+    assert config.load_voice_settings().gemini_chat_models == ("gemini-3.5-flash-lite", "gemini-3.1-flash-lite")
 
 
 def test_voice_settings_parse_origins_and_optional_dev_user(voice_env):

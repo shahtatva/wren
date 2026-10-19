@@ -2,10 +2,12 @@
 
 Groq's free tier allows about 8K tokens a minute per model and a turn's context is
 about 2K, so a lively session can hit a 429. Groq's limits are per model, so the first
-fallback is a second Groq model. Gemini Flash is the last resort: its free tier allows
-only 20 requests a day per model (as of 2026-10-16). A model is skipped only if it
-fails before its first token. After that, switching would repeat words already spoken,
-so a failure propagates and the turn ends there.
+fallback is a second Groq model. Gemini is the last resort: the models in
+GEMINI_CHAT_FALLBACK_MODELS, in order, or GEMINI_FLASH_MODEL if that's empty. Flash Lite
+allows 15 requests a minute and 500 a day, against Flash's 5 and 20, which extraction
+needs (free tier, 2026-10-19). A model is skipped only if it fails before its first
+token. After that, switching would repeat words already spoken, so a failure propagates
+and the turn ends there.
 
 Cancelling the consumer (barge-in) closes the Groq stream, which stops generation.
 """
@@ -54,6 +56,7 @@ def make_chat(
     groq_models = [voice.groq_chat_model]
     if voice.groq_chat_fallback_model and voice.groq_chat_fallback_model != voice.groq_chat_model:
         groq_models.append(voice.groq_chat_fallback_model)
+    gemini_models = voice.gemini_chat_models or (settings.gemini_flash_model,)
 
     async def groq_deltas(model: str, messages: list[dict]) -> AsyncIterator[str]:
         stream = await groq.chat.completions.create(
@@ -71,10 +74,10 @@ def make_chat(
         finally:
             await stream.close()
 
-    async def gemini_deltas(messages: list[dict]) -> AsyncIterator[str]:
+    async def gemini_deltas(model: str, messages: list[dict]) -> AsyncIterator[str]:
         system, contents = _gemini_request(messages)
         stream = await gemini.aio.models.generate_content_stream(
-            model=settings.gemini_flash_model,
+            model=model,
             contents=contents,
             config=types.GenerateContentConfig(system_instruction=system, max_output_tokens=max_tokens),
         )
@@ -84,7 +87,7 @@ def make_chat(
 
     async def chat(messages: list[dict], timing: TurnTiming) -> AsyncIterator[str]:
         sources = [(m, groq_deltas(m, messages)) for m in groq_models]
-        sources.append((settings.gemini_flash_model, gemini_deltas(messages)))
+        sources += [(m, gemini_deltas(m, messages)) for m in gemini_models]
         last_error: Exception | None = None
         for model, source in sources:
             try:

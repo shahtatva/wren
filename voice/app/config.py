@@ -59,6 +59,8 @@ class VoiceSettings:
     groq_chat_fallback_model: str | None  # Groq limits are per model, so a second one absorbs 429s
     allowed_origins: tuple[str, ...]
     dev_user_id: UUID | None  # local-only identity until real sign-in exists
+    # The chat's last resort after the Groq models, tried in order. Empty: GEMINI_FLASH_MODEL.
+    gemini_chat_models: tuple[str, ...] = ()
 
 
 def _dev_user_id() -> UUID | None:
@@ -87,4 +89,7 @@ def load_voice_settings() -> VoiceSettings:
         groq_chat_fallback_model=os.environ.get("GROQ_CHAT_FALLBACK_MODEL", "").strip() or None,
         allowed_origins=tuple(o.strip() for o in _require("ALLOWED_ORIGINS").split(",") if o.strip()),
         dev_user_id=_dev_user_id(),
+        gemini_chat_models=tuple(
+            m.strip() for m in os.environ.get("GEMINI_CHAT_FALLBACK_MODELS", "").split(",") if m.strip()
+        ),
     )
