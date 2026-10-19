@@ -59,6 +59,8 @@ export class VoiceClient {
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
   private micOn = true;
+  private micPending = false; // the mic is still starting; "hearing" waits for it
+  private serverHears: boolean | null = null; // speech-to-text on the server, known from "ready"
   private pausing = false;
   private audioTurns = new Set<number>();
   private pendingText: string[] = [];
@@ -81,13 +83,27 @@ export class VoiceClient {
         this.player = null; // Wren still answers, in text
       }
     }
+    // Open the socket while the mic starts: the permission prompt and the capture worklet
+    // take about a second, and the server can get ready in that time. The player comes
+    // first, because the hello says whether Wren's voice can play.
+    this.micPending = true;
+    this.connect();
     try {
-      this.mic = await startMic((frame) => this.onMicFrame(frame));
+      const mic = await startMic((frame) => this.onMicFrame(frame));
+      if (this.stopped) {
+        mic.stop();
+      } else {
+        this.mic = mic;
+        if (!this.micOn) mic.setEnabled(false);
+        if (this.serverHears) this.notice(null);
+      }
     } catch (error) {
       this.mic = null;
       this.notice(error instanceof DOMException && error.name === "NotAllowedError" ? NOTICES.micDenied : NOTICES.noVoice);
+    } finally {
+      this.micPending = false;
     }
-    this.connect();
+    if (!this.stopped) this.updateHearing();
   }
 
   stop(): void {
@@ -180,7 +196,8 @@ export class VoiceClient {
         this.sessionId = m.session_id;
         this.attempts = 0;
         this.emit({ type: "ready", voice: m.voice, memory: m.memory, model: m.model });
-        this.emit({ type: "hearing", available: m.voice && this.mic !== null });
+        this.serverHears = m.voice;
+        this.updateHearing();
         if (this.mic) this.notice(null);
         this.setStatus("listening");
         for (const text of this.pendingText.splice(0)) this.send({ type: "user_text", text });
@@ -221,7 +238,8 @@ export class VoiceClient {
         this.setStatus("speaking");
         break;
       case "voice":
-        this.emit({ type: "hearing", available: m.available && this.mic !== null });
+        this.serverHears = m.available;
+        this.updateHearing();
         this.notice(m.available ? null : m.reason === "idle" ? NOTICES.idle : NOTICES.deaf);
         break;
       case "metrics":
@@ -324,6 +342,12 @@ export class VoiceClient {
   }
 
   // --- helpers ---
+
+  /** Whether the user can be heard needs both answers: the server's and the mic's. */
+  private updateHearing(): void {
+    if (this.micPending || this.serverHears === null) return;
+    this.emit({ type: "hearing", available: this.serverHears && this.mic !== null });
+  }
 
   private emit(event: ClientEvent): void {
     this.options.onEvent(event);
