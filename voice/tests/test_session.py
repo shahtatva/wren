@@ -380,3 +380,48 @@ def test_reconnect_with_session_id_resumes_history():
         wire.until("reply_end")
     contents = [m["content"] for m in chat.calls[2]]
     assert "hello there" in contents and "Noted." in contents and len(chat.calls) == 3  # no second opening
+
+
+def test_pauses_extend_the_playback_deadline():
+    chat = FakeChat([OPENING, ["Lead with the number and then the result."]])
+    session, ws, wire, ready, stt, rt = speaking_session(chat)
+    try:
+        ws.send_json({"type": "user_text", "text": "Feedback please"})
+        wire.until("reply_end", turn=2)
+        ws.send_json({"type": "playback", "turn": 2, "seg": 0, "event": "start"})
+        ws.send_json({"type": "barge_in", "turn": 2, "seg": 0, "played_ms": 50, "onset_ms": 100})
+        for _ in range(50):  # about 1 s of murmuring: longer than the audio plus the grace
+            ws.send_bytes(LOUD)
+            time.sleep(0.02)
+        send_silence(ws, stt, 0.4)
+        wire.until("resume", turn=2, timeout=3)
+        assert not [m for m in wire.quiet(0.3) if m.get("outcome") == "complete"]  # the browser is still playing
+        ws.send_json({"type": "playback", "turn": 2, "seg": 0, "event": "end"})
+        wire.until("metrics", turn=2, outcome="complete")
+    finally:
+        session.__exit__(None, None, None)
+
+
+def test_a_twice_paused_reply_can_still_be_interrupted():
+    chat = FakeChat([OPENING, ["Lead with the number and then the result."]])
+    session, ws, wire, ready, stt, rt = speaking_session(chat)
+    try:
+        ws.send_json({"type": "user_text", "text": "Feedback please"})
+        wire.until("reply_end", turn=2)
+        ws.send_json({"type": "playback", "turn": 2, "seg": 0, "event": "start"})
+        for played in (40, 80):  # two pauses with no words, as echo on speakers causes
+            ws.send_json({"type": "barge_in", "turn": 2, "seg": 0, "played_ms": played, "onset_ms": 100})
+            wire.until("resume", turn=2, timeout=3)
+        wire.quiet(0.2)  # past the old deadline: 200 ms of audio plus 0.5 s of grace
+        ws.send_json({"type": "barge_in", "turn": 2, "seg": 0, "played_ms": 120, "onset_ms": 100})
+        stt.emit(interim("wait, I meant Monday"))
+        wire.until("interrupt", turn=2)
+    finally:
+        session.__exit__(None, None, None)
+
+
+def test_a_barge_in_for_a_finished_reply_gets_a_resume():
+    with voice_session(make_runtime(FakeChat([OPENING]), stt=FakeStt())) as (ws, wire, _):
+        play(ws, wire, turn=1)
+        ws.send_json({"type": "barge_in", "turn": 1, "seg": 0, "played_ms": 300, "onset_ms": 100})
+        wire.until("resume", turn=1, timeout=2)

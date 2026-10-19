@@ -74,6 +74,7 @@ class Reply:
     end_sent: bool = False
     finished: bool = False
     pause: tuple[int, float] | None = None  # (segment, played ms) where the browser paused
+    paused_s: float = 0.0  # total time the browser held this reply paused
 
     def full_text(self) -> str:
         return " ".join(s.text for s in self.segments)
@@ -517,11 +518,15 @@ class VoiceSession:
 
     async def _on_barge_in(self, msg: BargeIn) -> None:
         reply = self.reply
-        if reply is None or msg.turn != reply.no or self.state != "speaking":
+        if reply is not None and msg.turn == reply.no and self.state in ("speaking", "paused"):
+            if self.state == "speaking":  # when already paused, it's the same pause reported twice
+                self.state, self._paused_at = "paused", clock.now()
+                reply.pause = (msg.seg, msg.played_ms)
+                reply.timing.barge_in_ms = msg.onset_ms
             return
-        self.state, self._paused_at = "paused", clock.now()
-        reply.pause = (msg.seg, msg.played_ms)
-        reply.timing.barge_in_ms = msg.onset_ms
+        # The browser paused a reply this server isn't playing: it finished, or it's another turn.
+        # Nothing here would ever end that pause, so let the browser carry on.
+        await self._send({"type": "resume", "turn": msg.turn})
 
     async def _on_mic(self, on: bool) -> None:
         self.mic_on = on
@@ -558,13 +563,16 @@ class VoiceSession:
             self.state == "paused" and reply is not None and not self.vad.speaking
             and now - self._paused_at >= tuning.confirm_window_s
         ):
+            reply.paused_s += now - self._paused_at
             self.state, reply.pause, reply.timing.barge_in_ms = "speaking", None, None
             await self._send({"type": "resume", "turn": reply.no})
         # A browser that never reports the end of playback mustn't leave the turn speaking forever.
+        # Time it spent paused doesn't count: the audio still had that much left to play.
         if (
             reply is not None and self.state == "speaking" and reply.llm_done
             and reply.timing.first_audio_sent is not None
-            and now > reply.timing.first_audio_sent + sum(s.duration_ms() for s in reply.segments) / 1000 + tuning.playback_grace_s
+            and now > reply.timing.first_audio_sent + sum(s.duration_ms() for s in reply.segments) / 1000
+            + reply.paused_s + tuning.playback_grace_s
         ):
             logger.warning("turn %s: the browser never reported the end of playback; finishing it", reply.no)
             await self._finish(reply, "complete")

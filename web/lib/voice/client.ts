@@ -152,6 +152,7 @@ export class VoiceClient {
     this.epoch++;
     this.audioTurns.clear();
     this.player?.reset();
+    this.pausing = false; // a pause from the old connection can never be resumed now
     ws.onopen = () => {
       this.send({
         type: "hello",
@@ -206,6 +207,9 @@ export class VoiceClient {
         this.emit({ type: "caption", text: m.text });
         break;
       case "user_turn":
+        // Audio still queued belongs to replies the server has finished or cut: drop it.
+        this.player?.flush();
+        this.pausing = false;
         this.emit({ type: "caption", text: "" });
         this.emit({ type: "user", epoch, turn: m.turn, text: m.text });
         this.setStatus("thinking");
