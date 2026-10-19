@@ -86,10 +86,12 @@ class FakeTts:
 
 class FakeChat:
     """Scripted replies, one list of deltas per call. Calls can hang before their first
-    token (hang_before) or after N deltas (hang_after), until cancelled."""
+    token (hang_before) or after N deltas (hang_after), until cancelled, or wait a few
+    seconds before their first token (delay_before)."""
 
-    def __init__(self, replies, hang_before=(), hang_after=None):
+    def __init__(self, replies, hang_before=(), hang_after=None, delay_before=None):
         self.replies, self.hang_before, self.hang_after = list(replies), set(hang_before), dict(hang_after or {})
+        self.delay_before = dict(delay_before or {})
         self.calls, self.cancelled = [], []
 
     async def __call__(self, messages, timing):
@@ -99,6 +101,7 @@ class FakeChat:
         try:
             if index in self.hang_before:
                 await asyncio.sleep(3600)
+            await asyncio.sleep(self.delay_before.get(index, 0))
             deltas = self.replies[index] if index < len(self.replies) else ["Okay."]
             for i, delta in enumerate(deltas):
                 if self.hang_after.get(index) == i:

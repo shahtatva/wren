@@ -452,3 +452,26 @@ def test_the_cap_mid_reply_saves_what_was_heard():
     assert memory.closed == [ready["session_id"]]
     wren = [t for t in memory.appended if t["speaker"] == "wren"][-1]
     assert wren["text"] == "First sentence here is long enough to cut." and wren.get("interrupted") is True
+
+
+def test_a_cough_before_the_opening_plays_keeps_it():
+    stt = FakeStt()
+    rt = make_runtime(FakeChat([OPENING], delay_before={0: 0.3}), stt=stt)
+    with voice_session(rt) as (ws, wire, _):
+        for _ in range(5):  # 100 ms of noise while the opening is still being prepared
+            ws.send_bytes(LOUD)
+        send_silence(ws, stt, 0.4)
+        segments = play(ws, wire, turn=1)
+        assert [s["text"] for s in segments] == ["Hey Maya.", "How's the week going?"]
+
+
+def test_words_before_the_opening_still_replace_it():
+    stt = FakeStt()
+    rt = make_runtime(FakeChat([OPENING, ["Sure. Start with your opener."]], hang_before={0}), stt=stt)
+    with voice_session(rt) as (ws, wire, _):
+        send_silence(ws, stt, 0.2)
+        stt.emit(final("Can we practice my Sprout answer?", 0.1, 0.9))
+        end, _ = wire.until("reply_end", turn=1)
+        assert end["outcome"] == "continued"
+        user, _ = wire.until("user_turn", turn=2)
+        assert user["text"] == "Can we practice my Sprout answer?"

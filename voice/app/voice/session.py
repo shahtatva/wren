@@ -306,7 +306,8 @@ class VoiceSession:
             self.endpoint.speech_resumed()
             # Deepgram's words lag about a second behind the audio, so resumed speech is the
             # first sign the user hadn't finished. Wren hasn't said anything yet: start over.
-            if self.state == "thinking" and self.reply is not None:
+            # The opening answers nobody, so a cough mustn't cancel it; real words still do (_on_stt).
+            if self.state == "thinking" and self.reply is not None and self.reply.user_text is not None:
                 await self._continue(self.reply)
         elif heard == "end":
             try:
