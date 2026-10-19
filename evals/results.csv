@@ -17,3 +17,10 @@ date,commit,experiment,variant,change,recall_at_5,tokens_per_turn,stale_fact_rat
 2026-10-19T07:00:00Z,a62d6e2,E3,vector,rerun on a clean tree (all API outputs cached); extraction by gemini-3.8-flash,1,134.5,0,235.8,985.9
 2026-10-19T07:00:00Z,a62d6e2,E3,rrf,rerun on a clean tree (all API outputs cached); extraction by gemini-3.8-flash,0.917,132.1,0.111,243.9,979.9
 2026-10-19T07:00:00Z,a62d6e2,E3,rrf_boost,rerun on a clean tree (all API outputs cached); extraction by gemini-3.8-flash,0.883,134.0,0,236.5,979.9
+2026-10-19T07:02:19Z,8643971,E1,atomic,extraction model gemini-3.8-flash -> gemini-3.5-flash-lite: 15 requests a minute and 500 a day instead of 5 and 20,0.967,148.1,0.333,230.7,981.1
+2026-10-19T07:04:03Z,8643971,E2,raw,extraction model gemini-3.8-flash -> gemini-3.5-flash-lite: 15 requests a minute and 500 a day instead of 5 and 20,0.967,148.1,0.333,234.9,984.5
+2026-10-19T07:04:03Z,8643971,E2,rewrite,extraction model gemini-3.8-flash -> gemini-3.5-flash-lite: 15 requests a minute and 500 a day instead of 5 and 20,0.95,146.2,0.222,665.7,1068.8
+2026-10-19T07:04:03Z,8643971,E2,hyde,extraction model gemini-3.8-flash -> gemini-3.5-flash-lite: 15 requests a minute and 500 a day instead of 5 and 20,0.9,143.6,0.556,576.3,788.8
+2026-10-19T07:04:23Z,8643971,E3,vector,extraction model gemini-3.8-flash -> gemini-3.5-flash-lite: 15 requests a minute and 500 a day instead of 5 and 20,0.967,148.1,0.333,234.0,985.4
+2026-10-19T07:04:23Z,8643971,E3,rrf,extraction model gemini-3.8-flash -> gemini-3.5-flash-lite: 15 requests a minute and 500 a day instead of 5 and 20,0.883,147.5,0.556,236.0,984.9
+2026-10-19T07:04:23Z,8643971,E3,rrf_boost,extraction model gemini-3.8-flash -> gemini-3.5-flash-lite: 15 requests a minute and 500 a day instead of 5 and 20,0.867,148.6,0.111,234.3,984.4
