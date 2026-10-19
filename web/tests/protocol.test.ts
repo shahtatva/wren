@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { parseServerMessage, unpackAudio } from "../lib/voice/protocol.ts";
+import { parseServerMessage, reconnects, unpackAudio } from "../lib/voice/protocol.ts";
 
 test("unpackAudio reads the header", () => {
   const buf = new ArrayBuffer(8);
@@ -24,4 +24,11 @@ test("parseServerMessage keeps known messages and drops the rest", () => {
   assert.deepEqual(parseServerMessage('{"type":"interrupt","turn":4}'), { type: "interrupt", turn: 4 });
   assert.equal(parseServerMessage("not json"), null);
   assert.equal(parseServerMessage('{"no":"type"}'), null);
+});
+
+test("only a refusal or the session cap stops the page from reconnecting", () => {
+  assert.equal(reconnects(4401), false); // refused: retrying won't change it
+  assert.equal(reconnects(4410), false); // the session is over
+  assert.equal(reconnects(1006), true); // the connection dropped
+  assert.equal(reconnects(1000), true);
 });

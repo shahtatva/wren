@@ -1,4 +1,5 @@
 import time
+from dataclasses import replace
 from datetime import datetime
 
 import pytest
@@ -8,6 +9,7 @@ from starlette.websockets import WebSocketDisconnect
 from app.main import app
 from app.voice.events import SpeechStarted, Transcript
 from tests.voice_fakes import (
+    FAST,
     ORIGIN,
     FakeChat,
     FakeStt,
@@ -425,3 +427,28 @@ def test_a_barge_in_for_a_finished_reply_gets_a_resume():
         play(ws, wire, turn=1)
         ws.send_json({"type": "barge_in", "turn": 1, "seg": 0, "played_ms": 300, "onset_ms": 100})
         wire.until("resume", turn=1, timeout=2)
+
+
+def test_the_session_cap_closes_with_its_own_code():
+    rt = make_runtime(FakeChat([OPENING]), stt=None, tuning=replace(FAST, session_cap_s=1.0))
+    with voice_session(rt) as (ws, wire, _):
+        wire.until("error", code="session_over", timeout=3)
+        assert wire.next(timeout=3) == {"type": "_closed", "code": 4410}  # the page doesn't reconnect after it
+
+
+def test_the_cap_mid_reply_saves_what_was_heard():
+    memory = RecordingMemory()
+    chat = FakeChat([OPENING, ["First sentence here is long enough to cut. ", "Second one. "]], hang_after={1: 2})
+    rt = make_runtime(chat, stt=FakeStt(), memory=memory, tuning=replace(FAST, session_cap_s=1.5))
+    with voice_session(rt) as (ws, wire, ready):
+        play(ws, wire, turn=1)
+        ws.send_json({"type": "user_text", "text": "Give me feedback"})
+        wire.until("segment_end", turn=2, seg=1)
+        ws.send_json({"type": "playback", "turn": 2, "seg": 0, "event": "start"})
+        wire.until("error", code="session_over", timeout=3)
+        deadline = time.monotonic() + 3
+        while not memory.closed and time.monotonic() < deadline:  # the shutdown saves, then closes the session
+            time.sleep(0.02)
+    assert memory.closed == [ready["session_id"]]
+    wren = [t for t in memory.appended if t["speaker"] == "wren"][-1]
+    assert wren["text"] == "First sentence here is long enough to cut." and wren.get("interrupted") is True

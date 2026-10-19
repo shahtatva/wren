@@ -41,6 +41,14 @@ export type ServerMessage =
   | ({ type: "metrics" } & TurnMetrics)
   | { type: "error"; code: string; message: string };
 
+// Close codes the voice server uses. After any other close, the page reconnects.
+export const CLOSE_CODES = { badHello: 4400, unauthorized: 4401, sessionOver: 4410 } as const;
+
+/** Whether the page should reconnect after the socket closed with this code. */
+export function reconnects(code: number): boolean {
+  return code !== CLOSE_CODES.unauthorized && code !== CLOSE_CODES.sessionOver;
+}
+
 export function parseServerMessage(text: string): ServerMessage | null {
   try {
     const data = JSON.parse(text);

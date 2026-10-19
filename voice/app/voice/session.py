@@ -49,6 +49,7 @@ STT_RETRY_S = (1, 2, 5, 10, 30)
 PREFIX_GRACE_S = 0.5
 REPLY_FAILED = "I lost my train of thought. Could you say that again?"
 SESSION_OVER = "That's our time for this session. Start a new one whenever you're ready."
+SESSION_OVER_CLOSE = 4410  # the session cap's close code: the page doesn't reconnect after it
 
 
 @dataclass
@@ -587,6 +588,6 @@ class VoiceSession:
                     pass
         if now - self._started >= tuning.session_cap_s:
             await self._send({"type": "error", "code": "session_over", "message": SESSION_OVER})
-            await self.ws.close(code=1000)
+            await self.ws.close(code=SESSION_OVER_CLOSE)
             return True
         return False

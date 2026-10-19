@@ -7,7 +7,7 @@
 
 import { startMic, type Mic, type MicFrame } from "./mic";
 import { Player, type PlayerEvent, type Route } from "./player";
-import { parseServerMessage, unpackAudio, type ServerMessage, type TurnMetrics } from "./protocol";
+import { parseServerMessage, reconnects, unpackAudio, type ServerMessage, type TurnMetrics } from "./protocol";
 import { Vad } from "./vad";
 
 export const VOICE_SERVER_URL = process.env.NEXT_PUBLIC_VOICE_SERVER_URL ?? "http://localhost:8000";
@@ -175,8 +175,8 @@ export class VoiceClient {
       this.ws = null;
       this.player?.flush();
       if (this.stopped) return;
-      if (event.code === 4401) {
-        this.setStatus("idle"); // the server already said why; retrying won't change it
+      if (!reconnects(event.code)) {
+        this.setStatus("idle"); // the server already said why, and that notice stays on screen
         return;
       }
       this.setStatus("reconnecting");
