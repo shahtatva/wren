@@ -20,13 +20,17 @@ SECRETS = ("DEEPGRAM_API_KEY", "GROQ_API_KEY", "GEMINI_API_KEY", "SUPABASE_SECRE
 MIN_LENGTH = 8  # shorter values would match by accident
 
 
+def files_under(root: Path, skip: tuple[str, ...] = ()) -> list[Path]:
+    """Every file under root, leaving out the top-level folders named in skip."""
+    tops = [top for top in root.iterdir() if top.name not in skip]
+    return sorted([top for top in tops if top.is_file()] + [p for top in tops if top.is_dir() for p in top.rglob("*") if p.is_file()])
+
+
 def scan(root: Path, secrets: dict[str, str], skip: tuple[str, ...] = ()) -> dict[str, list[str]]:
     """Files under root that contain each secret, by key name. skip names top-level folders to leave out."""
     wanted = {name: value.strip() for name, value in secrets.items() if value and len(value.strip()) >= MIN_LENGTH}
     leaks: dict[str, list[str]] = {}
-    tops = [top for top in root.iterdir() if top.name not in skip]
-    files = [top for top in tops if top.is_file()] + [p for top in tops if top.is_dir() for p in top.rglob("*") if p.is_file()]
-    for path in sorted(files):
+    for path in files_under(root, skip):
         text = path.read_bytes().decode("utf-8", errors="ignore")
         for name, value in wanted.items():
             if value in text:
@@ -41,6 +45,8 @@ def main() -> int:
     values = dotenv_values(ENV_FILE)
     secrets = {name: values.get(name) or "" for name in SECRETS}
     leaks = scan(BUILD, secrets, skip=SKIP)
+    count = len(files_under(BUILD, SKIP))  # a scan of nothing would pass every key, so say how much it covered
+    print(f"scanned {count} file{'' if count == 1 else 's'} in {BUILD}, leaving out {', '.join(SKIP)}/")
     for name in SECRETS:
         if not secrets[name]:
             print(f"skip  {name} (not set)")

@@ -105,3 +105,17 @@ def test_leak_check_main_fails_on_a_key_in_a_prerendered_page(tmp_path, monkeypa
     assert leak_check.main() == 1
     out = capsys.readouterr().out
     assert "FAIL  GROQ_API_KEY found in server/app/talk.rsc" in out and "sk-live-123456" not in out
+
+
+def test_leak_check_main_says_how_much_it_scanned(tmp_path, monkeypatch, capsys):
+    from app.tools import leak_check
+
+    (tmp_path / "static").mkdir()
+    (tmp_path / "static" / "a.js").write_text("x = 1", encoding="utf-8")
+    (tmp_path / "cache").mkdir()
+    (tmp_path / "cache" / "b.bin").write_text("y", encoding="utf-8")
+    monkeypatch.setattr(leak_check, "BUILD", tmp_path)
+    monkeypatch.setattr(leak_check, "dotenv_values", lambda path: {"GROQ_API_KEY": "sk-live-123456"})
+    assert leak_check.main() == 0
+    out = capsys.readouterr().out
+    assert "scanned 1 file in" in out and str(tmp_path) in out  # a scan of nothing would pass every key

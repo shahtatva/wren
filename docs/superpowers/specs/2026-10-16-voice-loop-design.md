@@ -195,6 +195,13 @@ Arrows: `→` is browser to `voice/`, and `←` is `voice/` to browser.
 | → | `end {}` | The user ends the session |
 | ← | `error {code, message}` | `message` is user-facing copy |
 
+**Close codes.** A foreign `Origin` gets the handshake refused (HTTP 403). After that, the server closes the socket with:
+- `4400`: no valid hello within 5 s
+- `4401`: refused, with an `error` first saying why. The page doesn't reconnect.
+- `4410`: the session is over (the 45-minute cap), after `error {code: "session_over"}`. The page doesn't reconnect, and keeps that message on screen.
+
+The page reconnects, with backoff, after any other close.
+
 ## Turn lifecycle
 
 Each session is in one of four states:
@@ -208,12 +215,15 @@ Each session is in one of four states:
 | --- | --- | --- |
 | listening | End of turn | Start the turn task → thinking |
 | thinking | The user says new words | Cancel the task. Keep the committed text and merge it with what the user says next → listening |
+| thinking (the opening) | Sound without words, like a cough | Nothing. Only words replace the opening |
 | thinking | First audio sent | → speaking |
 | speaking | `barge_in` from the client | → paused, and start the confirmation window |
 | speaking | The server hears words the client missed | Confirm as below. This is the backup path, slower than 300 ms |
 | paused | Confirmed: 2 or more words that aren't echo or a backchannel | Cancel the task, send `Clear` to Aura-2, send `interrupt`, trim Wren's turn to what played → listening |
-| paused | Not confirmed within the window (start at 1.2 s) | Send `resume` → speaking |
+| paused | Not confirmed within the window (start at 1.2 s) | Send `resume` → speaking. The time spent paused extends the playback deadline |
 | speaking | `playback end` for the last segment | Save Wren's full turn → listening |
+| speaking | No `playback end` by the playback deadline: the audio's length, plus time spent paused, plus 3 s | Save Wren's full turn → listening |
+| any | `barge_in` for a reply the server isn't playing | Send `resume` for that turn, so the page never holds a pause nothing will end. On each new `user_turn`, the page drops leftover audio from earlier replies |
 | any | `user_text` | Interrupt as above, then commit the typed text |
 | any | Socket closes | Cancel everything, save what was heard and end the session |
 
@@ -277,9 +287,15 @@ The total is right at the 1.0 s p50 target, so the per-stage log matters more th
   - While the socket is down, typed turns go to `POST /turn`, which streams text and appends to the same session.
   - A per-session lock keeps the socket and `POST /turn` from running turns at once.
 - **Groq returns a 429 or an error:** Gemini Flash streams the reply. `retrieve()` already falls back to the raw message when the rewrite fails.
+- **The database drops a connection** (a pooler or NAT closes idle ones, and psycopg only finds out on use): the live path reconnects and runs the work once more. Appends skip turn ids already saved, so a retried save can't save a turn twice. A query stopped by the statement timeout isn't rerun.
+- **Deadlines on the live path:**
+  - Memories: 1.5 s (`retrieval_timeout_s`). After that the turn answers without them, with `retrieval_fallback: "timeout"`.
+  - Each chat model: 4 s to send its first token, then the next model is tried.
+  - Gemini calls: 60 s at most. The SDK's default is to wait forever.
+  - Live database queries: 3 s. Connecting: 5 s, with TCP keepalives so an idle connection survives.
 - **Credit guard:**
   - After 2 minutes with no speech, close the Nova-3 connection and show a paused state.
-  - Cap sessions at 45 minutes.
+  - Cap sessions at 45 minutes. The server sends `error {code: "session_over"}` and closes with 4410, and the page doesn't reconnect.
   - While muted, send a KeepAlive every 3 to 5 s instead of audio, since Deepgram closes a connection after 10 s with neither.
 
 ## Keys and access
