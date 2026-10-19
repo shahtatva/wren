@@ -28,6 +28,9 @@ from app.voice.tuning import Tuning
 
 logger = logging.getLogger(__name__)
 
+# No live query comes near this. A stuck one must not hold the shared connection for long.
+LIVE_STATEMENT_TIMEOUT_MS = 3000
+
 
 class Memory(Protocol):
     status: str  # "on", or "off: <why>"
@@ -85,15 +88,24 @@ class PostgresMemory:
         self._lock = threading.Lock()  # one operation at a time on the shared connection
 
     def _run(self, work):
-        """Run work(conn) on the shared connection, reconnecting first if it broke."""
+        """Run work(conn) on the shared connection.
+
+        A pooler or NAT can drop an idle connection, and psycopg only finds out on use. So
+        when the work fails that way, reconnect and run it once more. That's safe: every work
+        is one transaction (as_user), which a dead connection rolls back, or is idempotent.
+        """
         with self._lock:
-            if self._conn is None or self._conn.closed or self._conn.broken:
-                self._conn = store.connect(self._settings.database_url)
-            try:
-                return work(self._conn)
-            except psycopg.OperationalError:
-                self._conn.close()  # the next call reconnects
-                raise
+            for attempt in (1, 2):
+                if self._conn is None or self._conn.closed or self._conn.broken:
+                    self._conn = store.connect(self._settings.database_url, statement_timeout_ms=LIVE_STATEMENT_TIMEOUT_MS)
+                try:
+                    return work(self._conn)
+                except psycopg.errors.QueryCanceled:
+                    raise  # the statement timeout: the connection is fine, and running it again would wait twice
+                except psycopg.OperationalError:
+                    self._conn.close()
+                    if attempt == 2:
+                        raise
 
     def unavailable_reason(self, user_id: UUID) -> str | None:
         def check(conn):

@@ -87,6 +87,27 @@ def test_session_round_trip_as_user(db):
     assert conn.execute("select current_user").fetchone()[0] != "authenticated"  # as_user doesn't leak its role
 
 
+def test_appending_the_same_turns_again_keeps_one_copy(db):
+    conn, a, _ = db
+    first = [{"id": "s:t01", "speaker": "user", "text": "hi"}, {"id": "s:t02", "speaker": "wren", "text": "Hey."}]
+    with as_user(conn, a):
+        session_id = start_session(conn, a, "checkin", NOW)
+        append_turns(conn, session_id, first)
+        append_turns(conn, session_id, first)  # a retry after the first write had landed
+        append_turns(conn, session_id, [first[1], {"id": "s:t03", "speaker": "user", "text": "Friday."}])
+        _, _, transcript = load_transcript(conn, session_id)
+    assert [t["id"] for t in transcript] == ["s:t01", "s:t02", "s:t03"]
+
+
+def test_a_statement_timeout_cancels_a_slow_query():
+    from app.config import load_settings
+    from app.memory.store import connect
+
+    with connect(load_settings().database_url, statement_timeout_ms=200) as conn:
+        with pytest.raises(psycopg.errors.QueryCanceled):
+            conn.execute("select pg_sleep(1)")
+
+
 def test_rls_hides_other_users_sessions(db):
     conn, a, b = db
     with as_user(conn, a):

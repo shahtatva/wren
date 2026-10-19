@@ -31,9 +31,26 @@ RANKING_PARAMS = {
 }
 
 
-def connect(database_url: str) -> psycopg.Connection:
+def connect(database_url: str, *, statement_timeout_ms: int | None = None) -> psycopg.Connection:
+    """A connection that fails fast when the network is down and stays alive while idle.
+
+    statement_timeout_ms cancels any query that runs longer, for the whole connection.
+    DATABASE_URL is the session pooler, so a session setting lasts as long as the connection.
+    """
     # prepare_threshold=None: Supabase's pooler doesn't support prepared statements in all modes.
-    return psycopg.connect(database_url, autocommit=True, prepare_threshold=None)
+    # Keepalives stop a NAT or the pooler from silently dropping a connection between sessions.
+    conn = psycopg.connect(
+        database_url, autocommit=True, prepare_threshold=None,
+        connect_timeout=5, keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=3,
+    )
+    if statement_timeout_ms is not None:
+        try:
+            # SET takes no bind parameters; set_config does.
+            conn.execute("select set_config('statement_timeout', %s, false)", (str(statement_timeout_ms),))
+        except Exception:
+            conn.close()
+            raise
+    return conn
 
 
 def to_pgvector(vector: list[float]) -> str:
@@ -173,7 +190,15 @@ def start_session(conn: psycopg.Connection, user_id: UUID, mode: str, started_at
 
 
 def append_turns(conn: psycopg.Connection, session_id: UUID, turns: list[dict], *, schema: str = "public") -> None:
-    query = sql.SQL("update {} set transcript = transcript || %s where id = %s").format(sql.Identifier(schema, "sessions"))
+    """Add turns to the end of the transcript, in order. A turn whose id is already there is
+    skipped, so a write retried after it had landed can't save a turn twice."""
+    query = sql.SQL(
+        "update {} set transcript = transcript || coalesce(("
+        " select jsonb_agg(t.turn order by t.n)"
+        " from jsonb_array_elements(%s::jsonb) with ordinality as t(turn, n)"
+        " where not transcript @> jsonb_build_array(jsonb_build_object('id', t.turn -> 'id'))"
+        "), '[]'::jsonb) where id = %s"
+    ).format(sql.Identifier(schema, "sessions"))
     conn.execute(query, (Jsonb(turns), session_id))
 
 
