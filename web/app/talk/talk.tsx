@@ -110,6 +110,11 @@ export function Talk() {
       case "metrics":
         setTimings((prev) => addTiming(prev, `${event.epoch}:${event.metrics.turn}`, event.metrics));
         break;
+      case "ended":
+        // The session is over (the cap, or a refusal). The next tap or message starts a new one.
+        client.current = null;
+        setMicOn(true);
+        break;
     }
   }, []);
 

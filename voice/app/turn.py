@@ -156,7 +156,7 @@ async def run_turn(
             found = await asyncio.wait_for(retrieve(user_text), tuning.retrieval_timeout_s)
             hits = list(found.hits[: tuning.memories_k])
             timing.retrieval_fallback = found.fallback
-        except TimeoutError:  # caught first: TimeoutError is an OSError, so Exception would take it
+        except TimeoutError:  # before Exception, which would record it as "error:TimeoutError"
             logger.warning("retrieval took over %.1f s, answering without memories", tuning.retrieval_timeout_s)
             timing.retrieval_fallback = "timeout"
         except Exception as e:  # the live path never fails on retrieval

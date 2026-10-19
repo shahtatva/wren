@@ -200,6 +200,8 @@ Arrows: `→` is browser to `voice/`, and `←` is `voice/` to browser.
 - `4401`: refused, with an `error` first saying why. The page doesn't reconnect.
 - `4410`: the session is over (the 45-minute cap), after `error {code: "session_over"}`. The page doesn't reconnect, and keeps that message on screen.
 
+After `4401` or `4410` the page lets go of the mic and that session. Its next tap or message starts a new session.
+
 The page reconnects, with backoff, after any other close.
 
 ## Turn lifecycle
@@ -218,12 +220,13 @@ Each session is in one of four states:
 | thinking (the opening) | Sound without words, like a cough | Nothing. Only words replace the opening |
 | thinking | First audio sent | → speaking |
 | speaking | `barge_in` from the client | → paused, and start the confirmation window |
+| paused | `barge_in` for the same reply again | Ignore it. The confirmation window keeps running from the first one |
 | speaking | The server hears words the client missed | Confirm as below. This is the backup path, slower than 300 ms |
 | paused | Confirmed: 2 or more words that aren't echo or a backchannel | Cancel the task, send `Clear` to Aura-2, send `interrupt`, trim Wren's turn to what played → listening |
 | paused | Not confirmed within the window (start at 1.2 s) | Send `resume` → speaking. The time spent paused extends the playback deadline |
 | speaking | `playback end` for the last segment | Save Wren's full turn → listening |
 | speaking | No `playback end` by the playback deadline: the audio's length, plus time spent paused, plus 3 s | Save Wren's full turn → listening |
-| any | `barge_in` for a reply the server isn't playing | Send `resume` for that turn, so the page never holds a pause nothing will end. On each new `user_turn`, the page drops leftover audio from earlier replies |
+| any | `barge_in` for a reply the server isn't playing | Send `resume` for that turn, so the page never holds a pause nothing will end. The page acts on a `resume` only for the turn it paused. On each new `user_turn`, it drops leftover audio from earlier replies |
 | any | `user_text` | Interrupt as above, then commit the typed text |
 | any | Socket closes | Cancel everything, save what was heard and end the session |
 

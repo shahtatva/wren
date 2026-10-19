@@ -16,13 +16,20 @@ export class Player {
   private requests = new Map<number, (position: Position | null) => void>();
   private nextId = 1;
   private playing = false;
+  // Plain fields, not parameter properties: `node --test` loads this file by stripping types.
+  private readonly context: AudioContext;
+  private readonly node: AudioWorkletNode;
+  private readonly element: HTMLAudioElement | null;
 
   private constructor(
-    private readonly context: AudioContext,
-    private readonly node: AudioWorkletNode,
-    private readonly element: HTMLAudioElement | null,
+    context: AudioContext,
+    node: AudioWorkletNode,
+    element: HTMLAudioElement | null,
     onEvent: (event: PlayerEvent) => void,
   ) {
+    this.context = context;
+    this.node = node;
+    this.element = element;
     node.port.onmessage = ({ data }) => {
       if (data.type === "position") {
         this.requests.get(data.id)?.(data.position);

@@ -5,10 +5,11 @@
 // Deepgram, Groq and Gemini keys. Typed turns go over the socket, or over POST /turn while the
 // socket is down, and both run the same pipeline on the server.
 
-import { startMic, type Mic, type MicFrame } from "./mic";
-import { Player, type PlayerEvent, type Route } from "./player";
-import { parseServerMessage, reconnects, unpackAudio, type ServerMessage, type TurnMetrics } from "./protocol";
-import { Vad } from "./vad";
+// The imports name their .ts files so `node --test` can load this module, as web/tests do.
+import { startMic, type Mic, type MicFrame } from "./mic.ts";
+import { Player, type PlayerEvent, type Route } from "./player.ts";
+import { parseServerMessage, reconnects, unpackAudio, type ServerMessage, type TurnMetrics } from "./protocol.ts";
+import { Vad } from "./vad.ts";
 
 export const VOICE_SERVER_URL = process.env.NEXT_PUBLIC_VOICE_SERVER_URL ?? "http://localhost:8000";
 
@@ -25,7 +26,8 @@ export type ClientEvent =
   | { type: "drop"; epoch: number; turn: number }
   | { type: "cut"; epoch: number; turn: number }
   | { type: "metrics"; epoch: number; metrics: TurnMetrics }
-  | { type: "notice"; text: string | null };
+  | { type: "notice"; text: string | null }
+  | { type: "ended" }; // this client is done: the next tap or message needs a new one
 
 // What Wren says when something breaks: what happened, and what to do next (wren-voice skill).
 export const NOTICES = {
@@ -45,6 +47,7 @@ type Options = {
   route?: Route;
   onEvent: (event: ClientEvent) => void;
   onLevel?: (rms: number) => void;
+  startMic?: typeof startMic; // tests pass a fake mic
 };
 
 export class VoiceClient {
@@ -62,6 +65,7 @@ export class VoiceClient {
   private micPending = false; // the mic is still starting; "hearing" waits for it
   private serverHears: boolean | null = null; // speech-to-text on the server, known from "ready"
   private pausing = false;
+  private pausedTurn: number | null = null; // the turn this page paused, the only one a resume can be for
   private audioTurns = new Set<number>();
   private pendingText: string[] = [];
   private localTurn = 0; // POST /turn replies get negative turn numbers, never a server's
@@ -70,7 +74,11 @@ export class VoiceClient {
   private readonly levels: [number, number, boolean, string][] | null =
     typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debug") ? [] : null;
 
-  constructor(private readonly options: Options) {}
+  private readonly options: Options; // a plain field, so `node --test` can strip the types
+
+  constructor(options: Options) {
+    this.options = options;
+  }
 
   /** Call from a tap: browsers only start audio from a user gesture. */
   async start(): Promise<void> {
@@ -89,7 +97,7 @@ export class VoiceClient {
     this.micPending = true;
     this.connect();
     try {
-      const mic = await startMic((frame) => this.onMicFrame(frame));
+      const mic = await (this.options.startMic ?? startMic)((frame) => this.onMicFrame(frame));
       if (this.stopped) {
         mic.stop();
       } else {
@@ -134,6 +142,7 @@ export class VoiceClient {
   }
 
   async sendText(text: string): Promise<void> {
+    if (this.stopped) return; // a finished session takes no more turns; the page starts a new client
     if (this.ws?.readyState === WebSocket.OPEN && this.sessionId) {
       this.send({ type: "user_text", text });
     } else if (this.ws) {
@@ -153,6 +162,7 @@ export class VoiceClient {
     this.audioTurns.clear();
     this.player?.reset();
     this.pausing = false; // a pause from the old connection can never be resumed now
+    this.pausedTurn = null;
     ws.onopen = () => {
       this.send({
         type: "hello",
@@ -176,7 +186,10 @@ export class VoiceClient {
       this.player?.flush();
       if (this.stopped) return;
       if (!reconnects(event.code)) {
-        this.setStatus("idle"); // the server already said why, and that notice stays on screen
+        // The server already said why, and that notice stays on screen. Let go of the mic and
+        // Wren's voice, and tell the page, so its next tap or message starts a new session.
+        this.stop();
+        this.emit({ type: "ended" });
         return;
       }
       this.setStatus("reconnecting");
@@ -210,6 +223,7 @@ export class VoiceClient {
         // Audio still queued belongs to replies the server has finished or cut: drop it.
         this.player?.flush();
         this.pausing = false;
+        this.pausedTurn = null;
         this.emit({ type: "caption", text: "" });
         this.emit({ type: "user", epoch, turn: m.turn, text: m.text });
         this.setStatus("thinking");
@@ -233,10 +247,13 @@ export class VoiceClient {
       case "interrupt":
         this.player?.flush(m.turn);
         this.pausing = false;
+        this.pausedTurn = null;
         this.emit({ type: "cut", epoch, turn: m.turn });
         this.setStatus("listening");
         break;
       case "resume":
+        if (m.turn !== this.pausedTurn) break; // stale: about a turn this page isn't holding paused
+        this.pausedTurn = null;
         this.player?.resume();
         this.pausing = false;
         this.setStatus("speaking");
@@ -299,6 +316,7 @@ export class VoiceClient {
     const onsetMs = now - (this.vad.onsetAt ?? now);
     const position = await this.player!.pause();
     if (position) {
+      this.pausedTurn = position.turn;
       this.send({ type: "barge_in", turn: position.turn, seg: position.seg, played_ms: position.playedMs, onset_ms: onsetMs });
     } else {
       this.pausing = false; // nothing was playing after all

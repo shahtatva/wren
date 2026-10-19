@@ -433,7 +433,8 @@ def test_a_barge_in_for_a_finished_reply_gets_a_resume():
 def test_the_session_cap_closes_with_its_own_code():
     rt = make_runtime(FakeChat([OPENING]), stt=None, tuning=replace(FAST, session_cap_s=1.0))
     with voice_session(rt) as (ws, wire, _):
-        wire.until("error", code="session_over", timeout=3)
+        over, _ = wire.until("error", code="session_over", timeout=3)
+        assert over["message"].strip(), "the cap tells the user why the session ended"
         assert wire.next(timeout=3) == {"type": "_closed", "code": 4410}  # the page doesn't reconnect after it
 
 
@@ -485,3 +486,22 @@ def test_a_rejected_message_is_logged_without_its_text(caplog):
             ws.send_json({"type": "user_text", "text": "my private story " * 200})
             wire.quiet(0.2)
     assert "ignoring a bad client message" in caplog.text and "private story" not in caplog.text
+
+
+def test_a_second_barge_in_during_the_same_pause_changes_nothing():
+    chat = FakeChat([OPENING, ["Lead with the number and then the result."]])
+    tuning = replace(FAST, confirm_window_s=0.6, playback_grace_s=5.0)
+    session, ws, wire, ready, stt, rt = speaking_session(chat, tuning=tuning)
+    try:
+        ws.send_json({"type": "user_text", "text": "Feedback please"})
+        wire.until("reply_end", turn=2)
+        ws.send_json({"type": "playback", "turn": 2, "seg": 0, "event": "start"})
+        ws.send_json({"type": "barge_in", "turn": 2, "seg": 0, "played_ms": 50, "onset_ms": 100})
+        paused_at = time.monotonic()
+        wire.quiet(0.4)
+        ws.send_json({"type": "barge_in", "turn": 2, "seg": 0, "played_ms": 50, "onset_ms": 100})  # the same pause again
+        assert not [m for m in wire.quiet(0.1) if m["type"] == "resume"]  # not taken for a stale one
+        wire.until("resume", turn=2, timeout=2)
+        assert time.monotonic() - paused_at < 0.9  # the window still runs from the first barge_in
+    finally:
+        session.__exit__(None, None, None)

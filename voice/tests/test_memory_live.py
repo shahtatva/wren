@@ -117,7 +117,7 @@ def test_live_connections_ask_for_a_statement_timeout(monkeypatch):
     made = connections(monkeypatch, LiveConn())
     PostgresMemory(SETTINGS).unavailable_reason(USER)
     (kwargs,) = made
-    assert kwargs.get("statement_timeout_ms", 0) > 0  # test_store_db checks that the timeout cancels a slow query
+    assert kwargs.get("statement_timeout_ms", 0) >= 1000  # in ms; test_store_db checks it cancels a slow query
 
 
 class SlowConn(LiveConn):

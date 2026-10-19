@@ -49,4 +49,4 @@ def test_the_gemini_client_gives_up_instead_of_waiting_forever(monkeypatch):
     finally:
         llm._client.cache_clear()
     assert made["api_key"] == "key"
-    assert made["http_options"].timeout > 0  # milliseconds; the SDK's default is no timeout at all
+    assert made["http_options"].timeout >= 30_000  # ms, above extraction's 10-20 s calls; the SDK default is none
