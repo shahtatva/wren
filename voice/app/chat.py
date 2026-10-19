@@ -6,12 +6,13 @@ fallback is a second Groq model. Gemini is the last resort: the models in
 GEMINI_CHAT_FALLBACK_MODELS, in order, or GEMINI_FLASH_MODEL if that's empty. Flash Lite
 allows 15 requests a minute and 500 a day, against Flash's 5 and 20, which extraction
 needs (free tier, 2026-10-19). A model is skipped only if it fails before its first
-token. After that, switching would repeat words already spoken, so a failure propagates
-and the turn ends there.
+token, or sends none within CHAT_FIRST_TOKEN_S. After that, switching would repeat
+words already spoken, so a failure propagates and the turn ends there.
 
 Cancelling the consumer (barge-in) closes the Groq stream, which stops generation.
 """
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 
@@ -27,6 +28,7 @@ from app.voice.metrics import TurnTiming
 logger = logging.getLogger(__name__)
 
 GROQ_TIMEOUT_S = 10.0  # a stall guard; warm first tokens arrive in a few hundred ms
+CHAT_FIRST_TOKEN_S = 4.0  # a model with no first token by then is skipped for the next one
 
 
 def _groq_options(model: str) -> dict:
@@ -49,7 +51,8 @@ def _gemini_request(messages: list[dict]) -> tuple[str, list[types.Content]]:
 
 
 def make_chat(
-    settings: Settings, voice: VoiceSettings, *, max_tokens: int = 400, groq=None, gemini=None
+    settings: Settings, voice: VoiceSettings, *, max_tokens: int = 400, groq=None, gemini=None,
+    first_token_s: float = CHAT_FIRST_TOKEN_S,
 ) -> Chat:
     groq = groq or AsyncGroq(api_key=settings.groq_api_key, max_retries=0, timeout=GROQ_TIMEOUT_S)
     gemini = gemini or gemini_client(settings)
@@ -91,7 +94,7 @@ def make_chat(
         last_error: Exception | None = None
         for model, source in sources:
             try:
-                first = await anext(source)
+                first = await asyncio.wait_for(anext(source), first_token_s)
             except StopAsyncIteration:
                 return
             except Exception as e:

@@ -10,6 +10,7 @@ The stages come in as callables, like retrieve()'s, so the server, evals and tes
 each wire their own. Retrieval failing never fails the turn: Wren answers without memories.
 """
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import date, datetime, time, timezone
@@ -152,9 +153,12 @@ async def run_turn(
     if user_text is not None:
         timing.retrieval_start = clock.now()
         try:
-            found = await retrieve(user_text)
+            found = await asyncio.wait_for(retrieve(user_text), tuning.retrieval_timeout_s)
             hits = list(found.hits[: tuning.memories_k])
             timing.retrieval_fallback = found.fallback
+        except TimeoutError:  # caught first: TimeoutError is an OSError, so Exception would take it
+            logger.warning("retrieval took over %.1f s, answering without memories", tuning.retrieval_timeout_s)
+            timing.retrieval_fallback = "timeout"
         except Exception as e:  # the live path never fails on retrieval
             logger.warning("retrieval failed, answering without memories: %s: %s", type(e).__name__, e)
             timing.retrieval_fallback = f"error:{type(e).__name__}"

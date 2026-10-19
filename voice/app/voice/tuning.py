@@ -17,6 +17,7 @@ class Tuning:
     keepalive_s: float = 4.0  # Deepgram closes after 10 s with neither audio nor KeepAlive
     history_turns: int = 6
     memories_k: int = 8
+    retrieval_timeout_s: float = 1.5  # the most a turn waits for memories before answering without them
     pipeline_days: int = 7
     max_reply_tokens: int = 400
     playback_grace_s: float = 3.0  # finish a reply this long after its audio should have ended, played or not

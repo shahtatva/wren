@@ -195,3 +195,12 @@ def test_gpt_oss_gets_low_reasoning_without_reasoning_text():
     groq = FakeGroq(FakeGroqStream(["Hi."]))
     asyncio.run(collect(make_chat(SETTINGS, voice, groq=groq, gemini=FakeGemini([])), TurnTiming(1, "checkin", "text")))
     assert groq.calls[0]["reasoning_effort"] == "low" and groq.calls[0]["include_reasoning"] is False
+
+
+def test_a_model_without_a_first_token_in_time_falls_back():
+    stream = FakeGroqStream(["never"], hang_after=0)
+    timing = TurnTiming(turn=1, mode="checkin", input="voice")
+    chat = make_chat(SETTINGS, VOICE, groq=FakeGroq(stream), gemini=FakeGemini(["Okay."]), first_token_s=0.05)
+    assert asyncio.run(asyncio.wait_for(collect(chat, timing), 2)) == ["Okay."]  # never hang the suite
+    assert timing.chat_fallback == "TimeoutError" and timing.model == "gemini-test-flash"
+    assert stream.closed

@@ -1,5 +1,6 @@
 import asyncio
 from datetime import date, datetime, time, timedelta, timezone
+from time import monotonic
 from uuid import UUID
 
 import pytest
@@ -148,3 +149,19 @@ def test_part_of_day_follows_the_local_clock(hour, part):
     now = datetime(2026, 10, 15, hour, 0, tzinfo=timezone.utc)
     content = build_messages(conversation(), "hi", [], now, Tuning())[0]["content"]
     assert part in content
+
+
+def test_a_slow_retrieval_is_dropped_at_the_deadline():
+    async def retrieve(text):
+        await asyncio.sleep(2)
+        return Retrieved(HITS, 2_000.0)
+
+    chat = FakeChat(["Got it."])
+    timing = TurnTiming(turn=3, mode="checkin", input="voice")
+    started = monotonic()
+    out = asyncio.run(_collect(run_turn(
+        conversation(), "hello", retrieve=retrieve, chat=chat, timing=timing, tuning=Tuning(retrieval_timeout_s=0.05),
+    )))
+    assert out == ["Got it."] and monotonic() - started < 1.0
+    assert timing.retrieval_fallback == "timeout" and timing.memories == 0
+    assert "Nothing relevant yet." in chat.messages[0]["content"]

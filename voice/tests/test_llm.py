@@ -38,3 +38,15 @@ def test_generate_json_rejects_a_reply_that_breaks_the_schema(monkeypatch):
     _fake_client(monkeypatch, '{"questions": "not a list"}')
     with pytest.raises(ValidationError):
         llm.generate_json("PROMPT", Reply, SETTINGS)
+
+
+def test_the_gemini_client_gives_up_instead_of_waiting_forever(monkeypatch):
+    made = {}
+    monkeypatch.setattr(llm.genai, "Client", lambda **kwargs: made.update(kwargs) or "client")
+    llm._client.cache_clear()
+    try:
+        assert llm._client("key") == "client"
+    finally:
+        llm._client.cache_clear()
+    assert made["api_key"] == "key"
+    assert made["http_options"].timeout > 0  # milliseconds; the SDK's default is no timeout at all

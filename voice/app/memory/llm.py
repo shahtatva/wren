@@ -11,10 +11,13 @@ from app.config import Settings
 
 T = TypeVar("T", bound=BaseModel)
 
+# The SDK's default is to wait forever. Extraction and eval generation take about 10-20 s a call.
+GEMINI_TIMEOUT_MS = 60_000
+
 
 @lru_cache(maxsize=4)
 def _client(api_key: str) -> genai.Client:
-    return genai.Client(api_key=api_key)
+    return genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_MS))
 
 
 def client(settings: Settings) -> genai.Client:
