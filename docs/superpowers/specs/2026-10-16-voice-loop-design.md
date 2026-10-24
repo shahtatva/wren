@@ -16,6 +16,8 @@ The loop is built. Implementation plan: [plans/2026-10-16-voice-loop.md](../plan
 4. **The chat model is `openai/gpt-oss-120b` at medium reasoning** (changed 2026-10-23, [plans/2026-10-23-whole-replies.md](../plans/2026-10-23-whole-replies.md)).
    - It was `qwen/qwen3.8-27b` (median first token 186 ms). In a 59-turn session, about half of qwen's replies stopped after a word or two, or came back empty. Replaying two of those moments, 0 of 4 finished, and 0 of 8 with the repair's retry.
    - gpt-oss-120b at low reasoning finished 14 of 14, but it invented a story the user never told (4 of 4), garbled 988 in crisis replies (3 of 4) and glued a second answer onto the first (3 of 8). At medium: 0 of 3 on each. First word about 600 ms at the median in those replays, against about 470 ms at low.
+   - Groq counts gpt-oss's reasoning toward `max_completion_tokens`, so gpt-oss gets 400 tokens on top of the reply's 400. In a replay of the one turn that came back empty, a medium reply used 219 to 381 tokens in total.
+   - What the switch costs besides latency, from a 30-turn spoken session: replies run long (median 34 words, up to 102, against the persona card's one to three sentences), 3 of 29 asked two questions, and Wren made claims about its own memory that aren't true ("older sessions fade"). The persona card is the lever. It hasn't been changed yet.
    - When it's rate-limited, `openai/gpt-oss-20b` takes over, then Gemini Flash Lite. gpt-oss-20b is also the query-rewrite model, so the two share a limit, but only while the main model is rate-limited.
    - Gemini's free tier allows only 20 requests a day per model.
 5. **A `metrics` message carries each turn's timings to a debug panel.**
@@ -146,8 +148,8 @@ One browser tab holds one WebSocket to `voice/`. Per session, `voice/` holds one
 6. **Keep the reply whole** (2026-10-23).
    - The tail the stream ends on is spoken only if it ends a sentence; otherwise it's dropped, never spoken or saved.
    - A second answer glued to the first with no space ("...ready.Whenever you're ready, ...") ends the reply, and the stream is closed.
-   - A reply with no whole sentence at all is asked for once more, before any audio. If that fails too, Wren says "I lost my train of thought. Could you say that again?"
-   - `reply_repair` in the timing record says which of these happened: `dropped_tail`, `dropped_stacked`, `retried` or `gave_up`.
+   - A reply with no whole sentence at all is asked for once more, before any audio, at low reasoning: medium reasoning that fills the token budget is one way to get an empty reply. If that fails too, Wren says "I lost my train of thought. Could you say that again?" At the opening there's nothing to say again, so Wren greets instead, and says it's an AI in a first session.
+   - `reply_repair` in the timing record says which of these happened: `dropped_tail`, `dropped_stacked`, `retried` or `gave_up`. `finish_reason` and `completion_tokens` say why the model's stream ended (`length` means the token cap) and how many tokens it used.
 
 It records retrieval time, time to first token, first-segment time and context tokens for the metrics.
 
