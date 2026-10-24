@@ -83,6 +83,10 @@ class Segmenter:
             self._emit(raw, out)
         return out
 
+    def unfeed(self, chars: int) -> None:
+        """Take back the last `chars` characters fed. They must not have been emitted yet."""
+        self._buf = self._buf[: max(len(self._buf) - chars, 0)]
+
     def flush(self) -> list[str]:
         out: list[str] = []
         raw, self._buf = self._buf, ""

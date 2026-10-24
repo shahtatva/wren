@@ -267,3 +267,26 @@ def test_glued_looking_text_inside_a_sentence_is_kept():
     chat, timing = ScriptedChat(["It's 2.5 times better on Node.js in the U.S. Want to try?"]), TurnTiming(3, "checkin", "voice")
     assert turn_out(chat, timing) == ["It's 2.5 times better on Node.js in the U.S.", "Want to try?"]
     assert timing.reply_repair is None
+
+
+@pytest.mark.parametrize("reply", [
+    "Since you have a Ph.D. in chemistry, lead with the lab work. What was the project?",
+    "Your Socket.IO project is a good story. Want to try it?",
+    "Check their page on www.LinkedIn.com before Monday. Ready?",
+])
+def test_degrees_and_tech_names_are_not_taken_for_a_second_answer(reply):
+    timing = TurnTiming(3, "checkin", "voice")
+    out = turn_out(ScriptedChat([reply]), timing)
+    assert timing.reply_repair is None and out[-1].endswith("?")
+
+
+def test_a_glued_answer_split_mid_word_across_deltas_is_dropped():
+    chat, timing = ScriptedChat(["Sure, tell me the company when you're ready.Whenev", "er you're ready, just tell me. "]), TurnTiming(3, "checkin", "voice")
+    assert turn_out(chat, timing) == ["Sure, tell me the company when you're ready."]
+    assert timing.reply_repair == "dropped_stacked"
+
+
+def test_a_glued_answer_starting_with_i_is_dropped():
+    chat, timing = ScriptedChat(["Take your time.I'm here when you're ready. "]), TurnTiming(3, "checkin", "voice")
+    assert turn_out(chat, timing) == ["Take your time."]
+    assert timing.reply_repair == "dropped_stacked"

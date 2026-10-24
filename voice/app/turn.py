@@ -43,7 +43,9 @@ MODES = {"checkin": "a check-in", "mock": "mock interview practice"}
 RETRY_LINE = "I lost my train of thought. Could you say that again?"
 _END_MARK = r"[.!?\u2026][\"'\u201d\u2019)\]]*"
 _SENTENCE_END = re.compile(_END_MARK + "$")
-_GLUED_ANSWER = re.compile(r"(?<=[a-z0-9])" + _END_MARK + "(?=[A-Z])")  # "...ready.Whenever you're ready, ..."
+# "...ready.Whenever you're ready, ...": a sentence end with no space, then a word that starts a
+# sentence. Not "Ph.D.", "Socket.IO" or "www.LinkedIn.com": the next word must look like a word.
+_GLUED_ANSWER = re.compile(r"(?<=[a-z0-9])" + _END_MARK + r"(?=(?:[A-Z][a-z]+|[AI])[\s,;:!?.'\u2019])")
 
 Retrieve = Callable[[str], Awaitable[Retrieved]]
 Chat = Callable[[list[dict], TurnTiming], AsyncIterator[str]]
@@ -208,7 +210,10 @@ async def _whole_sentences(deltas: AsyncIterator[str], timing: TurnTiming) -> As
         async for delta in stream:
             seen, reply = len(reply), reply + delta
             glued = _GLUED_ANSWER.search(reply)
-            for segment in segmenter.feed(delta if glued is None else delta[: glued.end() - seen]):
+            if glued is not None:  # the second answer starts at glued.end(), maybe in an earlier delta
+                segmenter.unfeed(max(seen - glued.end(), 0))  # fed already, but only part of one word: not spoken
+                delta = delta[: max(glued.end() - seen, 0)]
+            for segment in segmenter.feed(delta):
                 yield segment
             if glued is not None:  # closing the stream stops generation
                 timing.reply_repair = "dropped_stacked"

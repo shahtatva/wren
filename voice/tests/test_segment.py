@@ -75,3 +75,10 @@ def test_segments_streams_from_async_deltas():
         return [s async for s in segments(deltas())]
 
     assert asyncio.run(collect()) == ["Hey Maya.", "Sprout is Friday.", "How are you?"]
+
+
+def test_unfeed_takes_back_text_not_yet_spoken():
+    seg = Segmenter()
+    assert seg.feed("You're ready.Whenev") == []
+    seg.unfeed(6)
+    assert seg.flush() == ["You're ready."]
