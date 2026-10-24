@@ -323,12 +323,19 @@ Whole replies cost about 210 ms at p50 and 310 ms at p95, almost all of it the m
 
 ## Keys and access
 
-- **Provider keys** are read from `voice/.env` and sent only in server-side `Authorization` headers. No protocol message carries one.
-- **Origin check.** The socket and `POST /turn` check `Origin` against `ALLOWED_ORIGINS`. That blocks other sites, but it isn't authentication.
-- **Local dev identity.** `WREN_DEV_USER_ID`, user zero's row in `auth.users`, is accepted without a token, but only from loopback client addresses (`127.0.0.1` or `::1`). It applies to the socket and to `POST /turn` alike. A proxy on the same host would also look like loopback, so the deploy plan must leave this setting unset.
+- **Provider keys** are read from `voice/.env` and sent only from the server: in `Authorization` headers to Deepgram, Groq and Gemini, and in the `apikey` header to Supabase Auth (a secret key isn't a JWT). No protocol message carries one.
+- **Origin check.** The socket, `POST /turn` and the `/auth` routes check `Origin` against `ALLOWED_ORIGINS`. That blocks other sites, but it isn't authentication.
+- **Local dev identity.** `WREN_DEV_USER_ID`, user zero's row in `auth.users`, is accepted without a token, but only from loopback client addresses (`127.0.0.1` or `::1`). It applies to the socket and to `POST /turn` alike, and it skips the age check, because it only exists on the owner's machine. A proxy on the same host would also look like loopback, so a deploy must leave this setting unset. An empty `WREN_DEV_USER_ID=` in the environment turns it off even when `voice/.env` sets it.
+- **Sign-in** (built 2026-10-24, [plans/2026-10-19-sign-in.md](../plans/2026-10-19-sign-in.md)). It's routed through `voice/`, because the browser never talks to Supabase.
+  - **Email and password, not emailed codes.** Since 2026-06-03, new Free Supabase projects can't edit their email templates on the built-in sender, and the default Magic Link email carries a link, not a code. So nothing sends email. The owner creates each account in the dashboard, with "Allow new users to sign up" off, and gives it a password with `python -m app.tools.set_password EMAIL`.
+  - **Routes on `voice/`:** `POST /auth/signin`, `/auth/refresh`, `/auth/age` and `/auth/signout`. A refusal is `{code, message}`, and a wrong email gets the same one as a wrong password.
+  - **The page** keeps the access token in memory and the refresh token in `localStorage`. It sends the token in the hello and as a bearer on `POST /turn`, and refreshes it when less than a minute is left. The password is never stored.
+  - **Checking a token.** `voice/` asks Supabase (`GET /auth/v1/user`), because the project has no asymmetric signing keys. An answer is cached for at most 5 minutes and never past the token's `exp`, and a refused token is remembered for a minute, both keyed by the token's SHA-256. A token Supabase has just issued is cached at once.
+  - **Admission.** The hello and each `POST /turn` admit a signed-in adult or the dev identity, checked once per connection or request, never per spoken turn. 18+ needs `profiles.age_confirmed_at`. Confirmed users are remembered, and the check fails closed when the database can't answer (`age_check_failed`, close code 4503).
+  - **Throttles,** in memory, which works because `voice/` runs one instance: token lookups 25 per 5 minutes overall; sign-in 5 per 15 minutes and 20 a day per email, and 30 per 5 minutes overall. Supabase's own limits are per IP, and every call comes from `voice/`: 150 per 5 minutes on `/auth/v1/token`, shared by sign-in and refresh, and 30 per 5 minutes listed for `/auth/v1/user`.
+  - **What throttling can't fix:** anyone who knows an invited email can lock that account's sign-in for 15 minutes, and anyone can lock everyone's for 5 minutes by spraying attempts. A CAPTCHA would narrow that.
 - **Deepgram connections** open only after the hello passes.
-- **Before any deploy** (a separate plan): real sign-in, routed through `voice/` because the browser never talks to Supabase. The likely shape is Supabase email codes, with the hello carrying a JWT checked against the project's signing keys. Live queries already run as `authenticated` with the user's id, so only the identity source changes.
-- **Check.** After `npm run build`, scan `web/.next/static` for each key value in `voice/.env`. The scan prints pass or fail, never the keys.
+- **Check.** After `npm run build`, scan the whole `web/.next` build, leaving out its cache, for each key value in `voice/.env`. The scan prints pass or fail, never the keys.
 
 ## Persistence and metrics
 
