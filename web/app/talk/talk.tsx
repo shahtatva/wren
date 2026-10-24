@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
+import { auth } from "@/lib/auth";
 import { VoiceClient, type ClientEvent, type VoiceStatus } from "@/lib/voice/client";
 import type { TurnMetrics } from "@/lib/voice/protocol";
 import { DebugPanel } from "./debug-panel";
+import { AgeStep, SignIn } from "./sign-in";
 
 type Line = { key: string; speaker: "user" | "wren"; text: string; cut: boolean };
 
@@ -21,6 +23,13 @@ const STATUS: Record<VoiceStatus, string> = {
 const subscribeNever = () => () => {};
 const debugInUrl = () => new URLSearchParams(window.location.search).has("debug");
 const noDebugOnServer = () => false;
+const storedSession = () => (auth.hasSession() ? "yes" : "no");
+const unknownOnServer = () => "unknown";
+
+type Screen = "sign-in" | "age" | "talk";
+// In development the loopback dev identity can let the page in without a sign-in, so it starts on
+// the talk screen and shows sign-in only if the server refuses. A production build starts on sign-in.
+const WITHOUT_A_SESSION: Screen = process.env.NODE_ENV === "development" ? "talk" : "sign-in";
 
 function lineKey(speaker: Line["speaker"], epoch: number, turn: number): string {
   return `${speaker}:${epoch}:${turn}`;
@@ -40,6 +49,32 @@ function addTiming(list: Timing[], key: string, metrics: TurnMetrics): Timing[] 
   // A turn's metrics arrive twice, with its first audio and when it finishes. Keep the latest.
   return [...list.filter((timing) => timing.key !== key), { key, metrics }];
 }
+
+function Header({ children }: { children?: ReactNode }) {
+  return (
+    <header className="flex items-baseline justify-between pt-5 pb-3">
+      <Link href="/" className="rounded text-lg font-semibold tracking-tight focus-visible:outline-2 focus-visible:outline-wren">
+        Wren
+      </Link>
+      <div className="flex items-baseline gap-4">{children}</div>
+    </header>
+  );
+}
+
+function SignOut({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded text-sm text-foreground/70 underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-wren"
+    >
+      Sign out
+    </button>
+  );
+}
+
+// Always on screen, so a session that starts by typing is disclosed too (wren-voice boundary 2).
+const AI_NOTE = <p className="mt-3 text-sm text-foreground/70">Wren is an AI, not a person.</p>;
 
 function MicGlyph({ muted }: { muted: boolean }) {
   return (
@@ -63,8 +98,15 @@ export function Talk() {
   const [draft, setDraft] = useState("");
   const debugParam = useSyncExternalStore(subscribeNever, debugInUrl, noDebugOnServer);
   const showDebug = process.env.NODE_ENV === "development" || debugParam;
+  const session = useSyncExternalStore(subscribeNever, storedSession, unknownOnServer);
+  const [chosenScreen, setScreen] = useState<Screen | null>(null);
+  const [signedInNow, setSignedIn] = useState<boolean | null>(null);
+  const screen: Screen | null =
+    chosenScreen ?? (session === "unknown" ? null : session === "yes" ? "talk" : WITHOUT_A_SESSION);
+  const signedIn = signedInNow ?? session === "yes";
 
   const client = useRef<VoiceClient | null>(null);
+  const resumeAfterAge = useRef(false); // the age step came from a refused session: start it again after
   const ring = useRef<HTMLSpanElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
 
@@ -110,6 +152,17 @@ export function Talk() {
       case "metrics":
         setTimings((prev) => addTiming(prev, `${event.epoch}:${event.metrics.turn}`, event.metrics));
         break;
+      case "refused":
+        if (event.code === "age_unconfirmed") {
+          resumeAfterAge.current = true;
+          setNotice(null); // the age step says it
+          setScreen("age");
+        } else {
+          void auth.signOut(); // the stored sign-in doesn't work any more
+          setSignedIn(false);
+          setScreen("sign-in");
+        }
+        break;
       case "ended":
         // The session is over (the cap, or a refusal). The next tap or message starts a new one.
         client.current = null;
@@ -125,7 +178,7 @@ export function Talk() {
 
   const begin = useCallback(async () => {
     if (client.current) return client.current;
-    const voice = new VoiceClient({ onEvent, onLevel });
+    const voice = new VoiceClient({ onEvent, onLevel, getToken: () => auth.getAccessToken() });
     client.current = voice;
     await voice.start();
     return voice;
@@ -155,6 +208,51 @@ export function Talk() {
     await voice.sendText(text);
   };
 
+  const onSignedIn = (needsAge: boolean) => {
+    setSignedIn(true);
+    setNotice(null);
+    setScreen(needsAge ? "age" : "talk");
+  };
+
+  const onAgeConfirmed = () => {
+    setScreen("talk");
+    if (resumeAfterAge.current) {
+      resumeAfterAge.current = false;
+      void begin();
+    }
+  };
+
+  const onSignOut = async () => {
+    client.current?.stop();
+    client.current = null;
+    await auth.signOut();
+    setSignedIn(false);
+    setLines([]);
+    setTimings([]);
+    setCaption("");
+    setNotice(null);
+    setInfo(null);
+    setMicOn(true);
+    setScreen("sign-in");
+  };
+
+  if (screen !== "talk") {
+    return (
+      <main className="mx-auto flex h-dvh w-full max-w-[40rem] flex-col px-5">
+        <Header>{screen === "age" && signedIn ? <SignOut onClick={onSignOut} /> : null}</Header>
+        <section className="flex-1 overflow-y-auto pt-[18vh] pb-4">
+          {notice && screen === "sign-in" ? (
+            <p role="status" className="pb-4 text-sm text-brick">
+              {notice}
+            </p>
+          ) : null}
+          {screen === "sign-in" ? <SignIn onSignedIn={onSignedIn} /> : screen === "age" ? <AgeStep onConfirmed={onAgeConfirmed} /> : null}
+        </section>
+        <footer className="border-t border-feather pb-5">{AI_NOTE}</footer>
+      </main>
+    );
+  }
+
   const started = status !== "idle";
   const muted = started && !micOn;
   const ringStyle =
@@ -171,14 +269,12 @@ export function Talk() {
 
   return (
     <main className="mx-auto flex h-dvh w-full max-w-[40rem] flex-col px-5">
-      <header className="flex items-baseline justify-between pt-5 pb-3">
-        <Link href="/" className="rounded text-lg font-semibold tracking-tight focus-visible:outline-2 focus-visible:outline-wren">
-          Wren
-        </Link>
+      <Header>
         <p aria-live="polite" className="text-sm text-foreground/70">
           {muted ? "Muted" : STATUS[status]}
         </p>
-      </header>
+        {signedIn ? <SignOut onClick={onSignOut} /> : null}
+      </Header>
 
       <section aria-label="Conversation" className="flex-1 overflow-y-auto py-4">
         {lines.length === 0 && !caption ? (
@@ -254,8 +350,7 @@ export function Talk() {
             </button>
           </form>
         </div>
-        {/* Always on screen, so a session that starts by typing is disclosed too (wren-voice boundary 2). */}
-        <p className="mt-3 text-sm text-foreground/70">Wren is an AI, not a person.</p>
+        {AI_NOTE}
       </footer>
 
       {showDebug ? <DebugPanel metrics={timings.map((timing) => timing.metrics)} info={info} /> : null}

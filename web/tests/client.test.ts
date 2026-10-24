@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { afterEach, mock, test } from "node:test";
 
+import { Auth } from "../lib/auth.ts";
 import { VoiceClient, type ClientEvent } from "../lib/voice/client.ts";
 import type { Mic, MicFrame } from "../lib/voice/mic.ts";
 import { Player, type PlayerEvent } from "../lib/voice/player.ts";
@@ -98,7 +99,9 @@ async function settle() {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-async function startedClient() {
+type Started = { getToken?: () => Promise<string | null>; fetch?: (url: string, init?: RequestInit) => Promise<Response> };
+
+async function startedClient(options: Started = {}) {
   const player = new FakePlayer();
   const fetches: string[] = [];
   let frames: (frame: MicFrame) => void = () => {};
@@ -110,9 +113,9 @@ async function startedClient() {
     },
   };
   swap(globalThis, "WebSocket", FakeSocket);
-  swap(globalThis, "fetch", async (url: string) => {
+  swap(globalThis, "fetch", async (url: string, init?: RequestInit) => {
     fetches.push(url);
-    return new Response(null, { status: 500 });
+    return options.fetch ? options.fetch(url, init) : new Response(null, { status: 500 });
   });
   swap(Player, "create", async (onEvent: (event: PlayerEvent) => void) => {
     player.emit = onEvent;
@@ -123,7 +126,7 @@ async function startedClient() {
     return mic;
   };
   const events: ClientEvent[] = [];
-  const client = new VoiceClient({ onEvent: (event) => events.push(event), startMic });
+  const client = new VoiceClient({ onEvent: (event) => events.push(event), startMic, getToken: options.getToken });
   await client.start();
   const socket = FakeSocket.made[0];
   socket.open();
@@ -178,4 +181,82 @@ test("a resume that arrives after its turn was interrupted is ignored", async ()
   socket.receive({ type: "resume", turn: 2 }); // its answer to the page's barge_in, already stale
   assert.ok(!player.calls.includes("resume"));
   assert.deepEqual(lastStatus(events), { type: "status", status: "listening" });
+});
+
+// A real macrotask: mock.timers fakes setTimeout and Date, not setImmediate.
+async function realTick(times = 5) {
+  for (let i = 0; i < times; i++) await new Promise((resolve) => setImmediate(resolve));
+}
+
+function fakeTimers(apis: ("setTimeout" | "Date")[]) {
+  mock.timers.enable({ apis, now: 0 });
+  undo.push(() => mock.timers.reset());
+}
+
+function json(status: number, body: unknown) {
+  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+}
+
+function hello(socket: FakeSocket) {
+  return socket.messages().find((message) => message.type === "hello");
+}
+
+test("refreshes before reconnecting when the token is near expiry", async () => {
+  fakeTimers(["setTimeout", "Date"]);
+  const tokens = (access: string, refresh: string) => ({ access_token: access, refresh_token: refresh, expires_in: 3600 });
+  const voiceServer = async (url: string) =>
+    url.endsWith("/auth/signin") ? json(200, { ...tokens("access-1", "refresh-1"), age_confirmed: true })
+    : url.endsWith("/auth/refresh") ? json(200, tokens("access-2", "refresh-2"))
+    : json(404, {});
+  const storage = new Map<string, string>();
+  const auth = new Auth({
+    base: "http://voice.test",
+    fetch: voiceServer as typeof globalThis.fetch,
+    storage: () => ({ getItem: (k: string) => storage.get(k) ?? null, setItem: (k: string, v: string) => void storage.set(k, v), removeItem: (k: string) => void storage.delete(k) }),
+  });
+  await auth.signIn("maya@example.com", "correct horse battery staple");
+  const { socket } = await startedClient({ getToken: () => auth.getAccessToken() });
+  await realTick();
+  assert.equal(hello(socket)?.token, "access-1");
+  mock.timers.tick(3600_000 - 30_000); // the token has 30 seconds left
+  socket.drop(1006);
+  mock.timers.tick(1000); // the first reconnect backoff
+  const again = FakeSocket.made[1];
+  again.open();
+  await realTick();
+  assert.equal(hello(again)?.token, "access-2");
+});
+
+test("a 4503 refusal keeps the server's message and retries", async () => {
+  fakeTimers(["setTimeout"]);
+  const { socket, events } = await startedClient();
+  const message = "I can't check your account right now. I'll keep trying.";
+  socket.receive({ type: "error", code: "age_check_failed", message });
+  socket.drop(4503);
+  assert.deepEqual(events.filter((event) => event.type === "notice").at(-1), { type: "notice", text: message });
+  assert.ok(!events.some((event) => event.type === "ended" || event.type === "refused"));
+  mock.timers.tick(1000);
+  assert.equal(FakeSocket.made.length, 2, "it reconnects with the usual backoff");
+});
+
+test("a 4401 age refusal tells the page to show the age step", async () => {
+  const { socket, events } = await startedClient();
+  socket.receive({ type: "error", code: "age_unconfirmed", message: "I'm built for adults. Confirm you're 18 or older to keep going." });
+  socket.drop(4401);
+  assert.ok(events.some((event) => event.type === "refused" && event.code === "age_unconfirmed"));
+  assert.ok(events.some((event) => event.type === "ended"));
+});
+
+test("a POST /turn refusal shows the server's message", async () => {
+  fakeTimers(["setTimeout"]); // the dropped socket's reconnect never fires
+  const message = "I'm built for adults. Confirm you're 18 or older to keep going.";
+  const { client, socket, events, fetches } = await startedClient({
+    getToken: async () => "access-1",
+    fetch: async () => json(403, { code: "age_unconfirmed", message }),
+  });
+  socket.drop(1006); // the socket is down, so typed text goes over POST /turn
+  await client.sendText("hello");
+  assert.ok(fetches.at(-1)?.endsWith("/turn"));
+  assert.deepEqual(events.filter((event) => event.type === "notice").at(-1), { type: "notice", text: message });
+  assert.ok(events.some((event) => event.type === "refused" && event.code === "age_unconfirmed"));
 });

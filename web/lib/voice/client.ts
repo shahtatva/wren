@@ -2,16 +2,22 @@
 // and barge-in. Design: docs/superpowers/specs/2026-10-16-voice-loop-design.md.
 //
 // No key ever reaches this file. The browser talks only to the voice server, which holds the
-// Deepgram, Groq and Gemini keys. Typed turns go over the socket, or over POST /turn while the
-// socket is down, and both run the same pipeline on the server.
+// Deepgram, Groq, Gemini and Supabase keys. Typed turns go over the socket, or over POST /turn
+// while the socket is down, and both run the same pipeline on the server. Both carry the user's
+// sign-in token (getToken), and a refusal tells the page to show sign-in or the age step.
 
 // The imports name their .ts files so `node --test` can load this module, as web/tests do.
 import { startMic, type Mic, type MicFrame } from "./mic.ts";
 import { Player, type PlayerEvent, type Route } from "./player.ts";
-import { parseServerMessage, reconnects, unpackAudio, type ServerMessage, type TurnMetrics } from "./protocol.ts";
+import { VOICE_SERVER_URL } from "../voice-server.ts";
+import { CLOSE_CODES, parseServerMessage, reconnects, unpackAudio, type ServerMessage, type TurnMetrics } from "./protocol.ts";
 import { Vad } from "./vad.ts";
 
-export const VOICE_SERVER_URL = process.env.NEXT_PUBLIC_VOICE_SERVER_URL ?? "http://localhost:8000";
+export { VOICE_SERVER_URL };
+
+/** Refusals the page acts on: sign in again, or confirm 18+. */
+export type RefusalCode = "unauthorized" | "age_unconfirmed";
+const REFUSAL_CODES: readonly string[] = ["unauthorized", "age_unconfirmed"];
 
 export type VoiceStatus = "idle" | "connecting" | "listening" | "thinking" | "speaking" | "paused" | "reconnecting";
 
@@ -27,6 +33,7 @@ export type ClientEvent =
   | { type: "cut"; epoch: number; turn: number }
   | { type: "metrics"; epoch: number; metrics: TurnMetrics }
   | { type: "notice"; text: string | null }
+  | { type: "refused"; code: RefusalCode } // show sign-in or the age step
   | { type: "ended" }; // this client is done: the next tap or message needs a new one
 
 // What Wren says when something breaks: what happened, and what to do next (wren-voice skill).
@@ -48,6 +55,7 @@ type Options = {
   onEvent: (event: ClientEvent) => void;
   onLevel?: (rms: number) => void;
   startMic?: typeof startMic; // tests pass a fake mic
+  getToken?: () => Promise<string | null>; // the sign-in token, fresh for each connection; none: the dev identity
 };
 
 export class VoiceClient {
@@ -69,6 +77,7 @@ export class VoiceClient {
   private audioTurns = new Set<number>();
   private pendingText: string[] = [];
   private localTurn = 0; // POST /turn replies get negative turn numbers, never a server's
+  private refusal: RefusalCode | null = null; // from the server's last error, acted on when the socket closes
   private readonly tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   // With ?debug=1, the last minute of mic levels, for tuning the barge-in detector.
   private readonly levels: [number, number, boolean, string][] | null =
@@ -163,13 +172,17 @@ export class VoiceClient {
     this.player?.reset();
     this.pausing = false; // a pause from the old connection can never be resumed now
     this.pausedTurn = null;
-    ws.onopen = () => {
+    ws.onopen = async () => {
+      // Asked on every connection, so a reconnect after a long session carries a refreshed token.
+      const token = await this.token();
+      if (this.ws !== ws) return;
       this.send({
         type: "hello",
         mode: this.options.mode ?? "checkin",
         tz: this.tz,
         session_id: this.sessionId,
         voice_out: this.player !== null,
+        ...(token ? { token } : {}),
       });
     };
     ws.onmessage = (event) => {
@@ -188,12 +201,15 @@ export class VoiceClient {
       if (!reconnects(event.code)) {
         // The server already said why, and that notice stays on screen. Let go of the mic and
         // Wren's voice, and tell the page, so its next tap or message starts a new session.
+        const refusal = this.refusal;
         this.stop();
+        if (refusal) this.emit({ type: "refused", code: refusal });
         this.emit({ type: "ended" });
         return;
       }
       this.setStatus("reconnecting");
-      this.notice(this.sessionId ? NOTICES.lost : NOTICES.unreachable);
+      // After 4503 the server's own message is on screen already: it says why and that it will retry.
+      if (event.code !== CLOSE_CODES.unavailable) this.notice(this.sessionId ? NOTICES.lost : NOTICES.unreachable);
       const delay = RECONNECT_MS[Math.min(this.attempts++, RECONNECT_MS.length - 1)];
       this.retryTimer = setTimeout(() => this.connect(), delay);
     };
@@ -268,6 +284,7 @@ export class VoiceClient {
         break;
       case "error":
         this.notice(m.message);
+        if (REFUSAL_CODES.includes(m.code)) this.refusal = m.code as RefusalCode;
         break;
     }
   }
@@ -333,11 +350,15 @@ export class VoiceClient {
     this.emit({ type: "user", epoch, turn, text });
     this.setStatus("thinking");
     try {
+      const token = await this.token();
+      const headers: Record<string, string> = { "content-type": "application/json" };
+      if (token) headers.authorization = `Bearer ${token}`;
       const response = await fetch(`${VOICE_SERVER_URL}/turn`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers,
         body: JSON.stringify({ text, session_id: this.sessionId, mode: this.options.mode ?? "checkin", tz: this.tz }),
       });
+      if (!response.ok && (await this.refusedTurn(response))) return;
       if (!response.ok || !response.body) throw new Error(`POST /turn returned ${response.status}`);
       const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
       let buffered = "";
@@ -363,7 +384,33 @@ export class VoiceClient {
     }
   }
 
+  /** A refusal from POST /turn (401, 403 or 503 with {code, message}): show its message, and
+   * tell the page when it needs sign-in or the age step. False when it isn't one. */
+  private async refusedTurn(response: Response): Promise<boolean> {
+    if (![401, 403, 503].includes(response.status)) return false;
+    let data: { code?: unknown; message?: unknown };
+    try {
+      data = await response.json();
+    } catch {
+      return false;
+    }
+    if (typeof data.message !== "string") return false;
+    this.notice(data.message);
+    if (typeof data.code === "string" && REFUSAL_CODES.includes(data.code)) {
+      this.emit({ type: "refused", code: data.code as RefusalCode });
+    }
+    return true;
+  }
+
   // --- helpers ---
+
+  private async token(): Promise<string | null> {
+    try {
+      return (await this.options.getToken?.()) ?? null;
+    } catch {
+      return null;
+    }
+  }
 
   /** Whether the user can be heard needs both answers: the server's and the mic's. */
   private updateHearing(): void {
