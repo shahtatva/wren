@@ -47,12 +47,14 @@ async def voice_socket(ws: WebSocket) -> None:
         logger.info("closing a socket without a valid hello: %s", type(e).__name__)
         await ws.close(code=4400)
         return
-    user_id = resolve_identity(hello.token, ws.client.host if ws.client else None, runtime.voice.dev_user_id)
-    if user_id is None:
+    identity = await resolve_identity(
+        hello.token, ws.client.host if ws.client else None, runtime.voice.dev_user_id, runtime.auth,
+    )
+    if identity is None:
         await ws.send_text(json.dumps({"type": "error", "code": "unauthorized", "message": "This voice server only accepts connections from its own machine for now."}))
         await ws.close(code=4401)
         return
-    await VoiceSession(ws, runtime, user_id, hello).run()
+    await VoiceSession(ws, runtime, identity.user_id, hello).run()
 
 
 class TurnRequest(BaseModel):
@@ -75,9 +77,12 @@ async def post_turn(body: TurnRequest, request: Request) -> StreamingResponse:
     origin = request.headers.get("origin")
     if origin is not None and origin not in runtime.voice.allowed_origins:
         raise HTTPException(status_code=403, detail="origin not allowed")
-    user_id = resolve_identity(_bearer(request), request.client.host if request.client else None, runtime.voice.dev_user_id)
-    if user_id is None:
+    identity = await resolve_identity(
+        _bearer(request), request.client.host if request.client else None, runtime.voice.dev_user_id, runtime.auth,
+    )
+    if identity is None:
         raise HTTPException(status_code=401, detail="not signed in")
+    user_id = identity.user_id
     tz = Hello(type="hello", tz=body.tz).tz  # unknown zones fall back to UTC
     memory = await runtime.memory.for_user(user_id)
     convo = runtime.registry.get(body.session_id) if body.session_id else None

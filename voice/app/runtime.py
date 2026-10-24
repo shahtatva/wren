@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Protocol
 from uuid import UUID
 
+from app.auth import SupabaseAuth
 from app.chat import make_chat
 from app.config import VoiceSettings, load_settings, load_voice_settings
 from app.conversation import ConversationRegistry
@@ -37,6 +38,7 @@ class Runtime:
     connect_stt: Callable[[], Awaitable[Stt]] | None  # None: no voice input, text only
     tts: Tts | None  # None: replies arrive as text only
     turn_log: TurnLog | None = None
+    auth: SupabaseAuth | None = None  # None: no sign-in, only the loopback dev identity
 
 
 def build_runtime() -> Runtime:
@@ -54,6 +56,7 @@ def build_runtime() -> Runtime:
         connect_stt=connect_stt,
         tts=AuraTts(voice.deepgram_api_key, voice.deepgram_tts_model),
         turn_log=TurnLog(LOG_DIR / "turns.jsonl"),
+        auth=SupabaseAuth(settings.supabase_url, settings.supabase_secret_key),
     )
 
 
