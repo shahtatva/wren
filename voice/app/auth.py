@@ -10,8 +10,11 @@ signing keys, so tokens can't be verified locally.
 - Lookups are capped overall: they all come from this one IP, and Supabase lists
   /auth/v1/user under 30 requests per 5 minutes per IP.
 - A token Supabase has just issued, at sign-in or refresh, is cached straight away.
+- A string that can't be an access token (not a JWT, no numeric exp ahead, too long) is
+  refused here, without spending a lookup.
 
-Sign-in attempts are capped per email and overall, which also slows password guessing.
+Sign-in attempts are capped per email and overall, which also slows password guessing, and
+refreshes are capped overall: sign-in and refresh share one Supabase budget.
 
 The secret key goes only in the apikey header (it isn't a JWT), and only to SUPABASE_URL
 over HTTPS. Tokens and passwords are never logged.
@@ -35,6 +38,8 @@ REFUSED_S = 60.0
 LOOKUP_LIMIT, LOOKUP_WINDOW_S = 25, 300.0
 SIGN_IN_PER_EMAIL = ((5, 15 * 60.0), (20, 24 * 3600.0))
 SIGN_IN_OVERALL = (30, 300.0)  # sign-in shares Supabase's 150 per 5 minutes with token refresh
+REFRESH_OVERALL = (100, 300.0)  # with sign-in's 30, under that shared 150
+MAX_TOKEN_CHARS = 8192
 TIMEOUT_S = 10.0
 
 
@@ -71,6 +76,14 @@ def _exp(token: str) -> float | None:
         return None
 
 
+def _could_be_valid(token: str, now: float) -> bool:
+    """A Supabase access token is a JWT whose numeric exp is still ahead. Anything else can't be valid."""
+    if len(token) > MAX_TOKEN_CHARS or token.count(".") != 2:
+        return False
+    exp = _exp(token)
+    return exp is not None and exp > now
+
+
 def _tokens(body: dict) -> Tokens:
     return Tokens(body["access_token"], body["refresh_token"], int(body["expires_in"]))
 
@@ -86,13 +99,17 @@ class SupabaseAuth:
         self._lookups = SlidingWindow(LOOKUP_LIMIT, LOOKUP_WINDOW_S, clock=clock)
         self._sign_in_email = [SlidingWindow(limit, window, clock=clock) for limit, window in SIGN_IN_PER_EMAIL]
         self._sign_in_all = SlidingWindow(*SIGN_IN_OVERALL, clock=clock)
+        self._refreshes = SlidingWindow(*REFRESH_OVERALL, clock=clock)
 
     def _evict(self, now: float) -> None:
         self._verified = {k: v for k, v in self._verified.items() if v[1] > now}
         self._refused = {k: until for k, until in self._refused.items() if until > now}
 
     async def user_for_token(self, token: str) -> UUID | None:
-        now, key = self._clock(), _digest(token)
+        now = self._clock()
+        if not _could_be_valid(token, now):
+            return None
+        key = _digest(token)
         if (hit := self._verified.get(key)) is not None and hit[1] > now:
             return hit[0]
         if self._refused.get(key, 0.0) > now:
@@ -142,6 +159,8 @@ class SupabaseAuth:
         return await self._grant("password", {"email": email.strip(), "password": password})
 
     async def refresh(self, refresh_token: str) -> Tokens:
+        if not self._refreshes.allow("all"):
+            raise Throttled("refresh")
         return await self._grant("refresh_token", {"refresh_token": refresh_token})
 
     async def sign_out(self, access_token: str) -> None:

@@ -1,6 +1,7 @@
 """SupabaseAuth against a fake Supabase Auth, served through httpx.MockTransport."""
 
 import asyncio
+import base64
 import json
 
 import pytest
@@ -55,10 +56,10 @@ def test_the_cache_never_outlives_the_token():
     async def main():
         assert await auth.user_for_token(token) == USER
         clock.now += 61
-        assert await auth.user_for_token(token) is None  # asked again, and Supabase says it expired
+        assert await auth.user_for_token(token) is None  # expired: not answered from the cache
 
     asyncio.run(main())
-    assert len(supabase.requests) == 2
+    assert len(supabase.requests) == 1  # nor asked about again: an expired token can't be valid
 
 
 def test_expired_cache_entries_are_evicted():
@@ -67,24 +68,26 @@ def test_expired_cache_entries_are_evicted():
     async def main():
         await auth.user_for_token(jwt(START + 60, 1))
         await auth.user_for_token(jwt(START + 3600, 2))
-        await auth.user_for_token("junk-1")
+        await auth.user_for_token(jwt(START + 3600, 3))  # Supabase refuses it
         clock.now += 301  # both verified answers and the refusal are stale now
-        await auth.user_for_token("junk-2")
+        await auth.user_for_token(jwt(START + 3600, 4))
 
     asyncio.run(main())
-    # The cache stays small: an insert drops what has expired. Only junk-2's refusal is left.
+    # The cache stays small: an insert drops what has expired. Only the last refusal is left.
     assert (len(auth._verified), len(auth._refused)) == (0, 1)
 
 
 def test_a_refused_token_is_remembered_for_a_minute():
     auth, supabase, clock = make_auth((403, BAD_JWT))
 
+    refused = jwt(START + 3600, 9)
+
     async def main():
-        assert await auth.user_for_token("junk") is None
-        assert await auth.user_for_token("junk") is None
+        assert await auth.user_for_token(refused) is None
+        assert await auth.user_for_token(refused) is None
         assert len(supabase.requests) == 1
         clock.now += 61
-        assert await auth.user_for_token("junk") is None
+        assert await auth.user_for_token(refused) is None
         assert len(supabase.requests) == 2
 
     asyncio.run(main())
@@ -185,3 +188,36 @@ def test_supabase_rate_limiting_a_sign_in_counts_as_throttled():
     auth, _, _ = make_auth((429, RATE_LIMITED))
     with pytest.raises(Throttled):
         asyncio.run(auth.sign_in("maya@example.com", "correct horse"))
+
+
+def test_a_token_that_cant_be_valid_spends_no_lookup():
+    auth, supabase, _ = make_auth((200, USER_BODY))
+    header = jwt(START + 3600).split(".")[0]
+    not_a_time = header + "." + base64.urlsafe_b64encode(json.dumps({"exp": "soon"}).encode()).decode().rstrip("=") + ".sig"
+    cannot_be = ["", "junk", "a.b", jwt(START - 1), not_a_time, jwt(START + 3600) + "x" * 9000]
+
+    async def main():
+        for token in cannot_be:
+            assert await auth.user_for_token(token) is None
+        assert supabase.requests == []
+        for n in range(25):  # and none of them used up the lookup cap
+            assert await auth.user_for_token(jwt(START + 3600, n)) == USER
+
+    asyncio.run(main())
+    assert len(supabase.requests) == 25
+
+
+def test_refreshes_are_capped_overall():
+    auth, supabase, clock = make_auth((200, token_body("access-2", "refresh-2")))
+
+    async def main():
+        for _ in range(100):
+            await auth.refresh("refresh-1")
+        with pytest.raises(Throttled):
+            await auth.refresh("refresh-1")
+        assert len(supabase.requests) == 100  # the 101st never reached Supabase
+        clock.now += 301
+        await auth.refresh("refresh-1")
+
+    asyncio.run(main())
+    assert len(supabase.requests) == 101
