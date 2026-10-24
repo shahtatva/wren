@@ -260,3 +260,52 @@ test("a POST /turn refusal shows the server's message", async () => {
   assert.deepEqual(events.filter((event) => event.type === "notice").at(-1), { type: "notice", text: message });
   assert.ok(events.some((event) => event.type === "refused" && event.code === "age_unconfirmed"));
 });
+
+test("a refresh that fails at reconnect keeps the sign-in and retries", async () => {
+  fakeTimers(["setTimeout"]);
+  const answers: (() => string)[] = [
+    () => "access-1",
+    () => {
+      throw new Error("no token right now"); // a sign-in, but the refresh failed for now
+    },
+    () => "access-2",
+  ];
+  const { socket, events } = await startedClient({ getToken: async () => answers.shift()!() });
+  await realTick();
+  assert.equal(hello(socket)?.token, "access-1");
+  socket.drop(1006);
+  mock.timers.tick(1000);
+  const second = FakeSocket.made[1];
+  second.open();
+  await realTick();
+  assert.equal(hello(second), undefined, "no hello without a token: it would be refused, or let in as the dev identity");
+  assert.deepEqual(events.filter((event) => event.type === "notice").at(-1), {
+    type: "notice",
+    text: "I can't reach sign-in right now. I'll keep trying.",
+  });
+  assert.ok(!events.some((event) => event.type === "refused" || event.type === "ended"), "still signed in");
+  mock.timers.tick(2000); // the second backoff
+  const third = FakeSocket.made[2];
+  third.open();
+  await realTick();
+  assert.equal(hello(third)?.token, "access-2");
+});
+
+test("typed text waits when there's a sign-in but no token right now", async () => {
+  fakeTimers(["setTimeout"]);
+  let calls = 0;
+  const { client, socket, events, fetches } = await startedClient({
+    getToken: async () => {
+      if (calls++ === 0) return "access-1";
+      throw new Error("no token right now");
+    },
+  });
+  await realTick();
+  socket.drop(1006); // typed text now goes over POST /turn
+  await client.sendText("hello");
+  assert.ok(!fetches.some((url) => url.endsWith("/turn")), "nothing is posted without a token");
+  assert.deepEqual(events.filter((event) => event.type === "notice").at(-1), {
+    type: "notice",
+    text: "I can't reach sign-in right now. Try again in a minute.",
+  });
+});

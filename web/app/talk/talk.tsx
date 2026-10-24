@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { VoiceClient, type ClientEvent, type VoiceStatus } from "@/lib/voice/client";
 import type { TurnMetrics } from "@/lib/voice/protocol";
 import { DebugPanel } from "./debug-panel";
+import { screenAfter, type Screen, type ScreenEvent } from "@/lib/talk-screen";
 import { AgeStep, SignIn } from "./sign-in";
 
 type Line = { key: string; speaker: "user" | "wren"; text: string; cut: boolean };
@@ -26,7 +27,6 @@ const noDebugOnServer = () => false;
 const storedSession = () => (auth.hasSession() ? "yes" : "no");
 const unknownOnServer = () => "unknown";
 
-type Screen = "sign-in" | "age" | "talk";
 // In development the loopback dev identity can let the page in without a sign-in, so it starts on
 // the talk screen and shows sign-in only if the server refuses. A production build starts on sign-in.
 const WITHOUT_A_SESSION: Screen = process.env.NODE_ENV === "development" ? "talk" : "sign-in";
@@ -61,14 +61,14 @@ function Header({ children }: { children?: ReactNode }) {
   );
 }
 
-function SignOut({ onClick }: { onClick: () => void }) {
+function HeaderButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className="rounded text-sm text-foreground/70 underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-wren"
     >
-      Sign out
+      {label}
     </button>
   );
 }
@@ -106,7 +106,6 @@ export function Talk() {
   const signedIn = signedInNow ?? session === "yes";
 
   const client = useRef<VoiceClient | null>(null);
-  const resumeAfterAge = useRef(false); // the age step came from a refused session: start it again after
   const ring = useRef<HTMLSpanElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
 
@@ -114,6 +113,21 @@ export function Talk() {
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: "end" });
   }, [lines, caption]);
+
+  // A sign-in event: show the right screen, and let go of the session or the stored sign-in when it says to.
+  const go = useCallback((event: ScreenEvent) => {
+    const change = screenAfter(event);
+    if (change.stopClient) {
+      client.current?.stop();
+      client.current = null;
+      setMicOn(true);
+    }
+    if (change.forgetSignIn) {
+      auth.forget();
+      setSignedIn(false);
+    }
+    setScreen(change.screen);
+  }, []);
 
   const onEvent = useCallback((event: ClientEvent) => {
     switch (event.type) {
@@ -153,15 +167,8 @@ export function Talk() {
         setTimings((prev) => addTiming(prev, `${event.epoch}:${event.metrics.turn}`, event.metrics));
         break;
       case "refused":
-        if (event.code === "age_unconfirmed") {
-          resumeAfterAge.current = true;
-          setNotice(null); // the age step says it
-          setScreen("age");
-        } else {
-          void auth.signOut(); // the stored sign-in doesn't work any more
-          setSignedIn(false);
-          setScreen("sign-in");
-        }
+        if (event.code === "age_unconfirmed") setNotice(null); // the age step says it
+        go({ type: "refused", code: event.code });
         break;
       case "ended":
         // The session is over (the cap, or a refusal). The next tap or message starts a new one.
@@ -169,7 +176,7 @@ export function Talk() {
         setMicOn(true);
         break;
     }
-  }, []);
+  }, [go]);
 
   // Wren's voice level drives the ring directly, about 23 times a second, without re-rendering.
   const onLevel = useCallback((rms: number) => {
@@ -211,15 +218,12 @@ export function Talk() {
   const onSignedIn = (needsAge: boolean) => {
     setSignedIn(true);
     setNotice(null);
-    setScreen(needsAge ? "age" : "talk");
+    go({ type: "signed-in", needsAge });
   };
 
-  const onAgeConfirmed = () => {
-    setScreen("talk");
-    if (resumeAfterAge.current) {
-      resumeAfterAge.current = false;
-      void begin();
-    }
+  const onAgeSignedOut = (message: string) => {
+    setNotice(message); // the sign-in screen shows why it's back
+    go({ type: "age-signed-out" });
   };
 
   const onSignOut = async () => {
@@ -239,14 +243,18 @@ export function Talk() {
   if (screen !== "talk") {
     return (
       <main className="mx-auto flex h-dvh w-full max-w-[40rem] flex-col px-5">
-        <Header>{screen === "age" && signedIn ? <SignOut onClick={onSignOut} /> : null}</Header>
+        <Header>{screen === "age" && signedIn ? <HeaderButton label="Sign out" onClick={onSignOut} /> : null}</Header>
         <section className="flex-1 overflow-y-auto pt-[18vh] pb-4">
           {notice && screen === "sign-in" ? (
             <p role="status" className="pb-4 text-sm text-brick">
               {notice}
             </p>
           ) : null}
-          {screen === "sign-in" ? <SignIn onSignedIn={onSignedIn} /> : screen === "age" ? <AgeStep onConfirmed={onAgeConfirmed} /> : null}
+          {screen === "sign-in" ? (
+            <SignIn onSignedIn={onSignedIn} />
+          ) : screen === "age" ? (
+            <AgeStep onConfirmed={() => go({ type: "age-confirmed" })} onSignedOut={onAgeSignedOut} />
+          ) : null}
         </section>
         <footer className="border-t border-feather pb-5">{AI_NOTE}</footer>
       </main>
@@ -273,7 +281,11 @@ export function Talk() {
         <p aria-live="polite" className="text-sm text-foreground/70">
           {muted ? "Muted" : STATUS[status]}
         </p>
-        {signedIn ? <SignOut onClick={onSignOut} /> : null}
+        {signedIn ? (
+          <HeaderButton label="Sign out" onClick={onSignOut} />
+        ) : (
+          <HeaderButton label="Sign in" onClick={() => go({ type: "sign-in-asked" })} />
+        )}
       </Header>
 
       <section aria-label="Conversation" className="flex-1 overflow-y-auto py-4">

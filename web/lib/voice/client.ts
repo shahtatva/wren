@@ -44,6 +44,8 @@ export const NOTICES = {
   idle: "I paused listening. Tap the mic when you want to keep talking.",
   deaf: "I can't hear right now. Type instead, and I'll keep answering.",
   unreachable: "I can't reach the voice server right now. Try again in a moment.",
+  signInRetrying: "I can't reach sign-in right now. I'll keep trying.",
+  signInUnreachable: "I can't reach sign-in right now. Try again in a minute.",
 };
 
 const RECONNECT_MS = [1000, 2000, 5000, 10000, 20000];
@@ -55,7 +57,9 @@ type Options = {
   onEvent: (event: ClientEvent) => void;
   onLevel?: (rms: number) => void;
   startMic?: typeof startMic; // tests pass a fake mic
-  getToken?: () => Promise<string | null>; // the sign-in token, fresh for each connection; none: the dev identity
+  // The sign-in token, fresh for each connection. Null: there's none, so only the dev identity can
+  // get in. Throws when there is a sign-in but no token right now: the client then waits and retries.
+  getToken?: () => Promise<string | null>;
 };
 
 export class VoiceClient {
@@ -174,7 +178,19 @@ export class VoiceClient {
     this.pausedTurn = null;
     ws.onopen = async () => {
       // Asked on every connection, so a reconnect after a long session carries a refreshed token.
-      const token = await this.token();
+      let token: string | null;
+      try {
+        token = await this.token();
+      } catch {
+        // A sign-in with no token right now. A tokenless hello would be refused, or let in as the
+        // dev identity, so drop this socket and try again with backoff, as after a 4503.
+        if (this.ws !== ws) return;
+        this.ws = null;
+        ws.onclose = null;
+        ws.close();
+        this.retryLater(NOTICES.signInRetrying);
+        return;
+      }
       if (this.ws !== ws) return;
       this.send({
         type: "hello",
@@ -207,12 +223,16 @@ export class VoiceClient {
         this.emit({ type: "ended" });
         return;
       }
-      this.setStatus("reconnecting");
       // After 4503 the server's own message is on screen already: it says why and that it will retry.
-      if (event.code !== CLOSE_CODES.unavailable) this.notice(this.sessionId ? NOTICES.lost : NOTICES.unreachable);
-      const delay = RECONNECT_MS[Math.min(this.attempts++, RECONNECT_MS.length - 1)];
-      this.retryTimer = setTimeout(() => this.connect(), delay);
+      this.retryLater(event.code === CLOSE_CODES.unavailable ? null : this.sessionId ? NOTICES.lost : NOTICES.unreachable);
     };
+  }
+
+  private retryLater(notice: string | null): void {
+    this.setStatus("reconnecting");
+    if (notice) this.notice(notice);
+    const delay = RECONNECT_MS[Math.min(this.attempts++, RECONNECT_MS.length - 1)];
+    this.retryTimer = setTimeout(() => this.connect(), delay);
   }
 
   private send(message: object): void {
@@ -350,7 +370,13 @@ export class VoiceClient {
     this.emit({ type: "user", epoch, turn, text });
     this.setStatus("thinking");
     try {
-      const token = await this.token();
+      let token: string | null;
+      try {
+        token = await this.token();
+      } catch {
+        this.notice(NOTICES.signInUnreachable); // posting without the token would be refused
+        return;
+      }
       const headers: Record<string, string> = { "content-type": "application/json" };
       if (token) headers.authorization = `Bearer ${token}`;
       const response = await fetch(`${VOICE_SERVER_URL}/turn`, {
@@ -404,12 +430,9 @@ export class VoiceClient {
 
   // --- helpers ---
 
+  /** Throws when there is a sign-in but no token right now (see Options.getToken). */
   private async token(): Promise<string | null> {
-    try {
-      return (await this.options.getToken?.()) ?? null;
-    } catch {
-      return null;
-    }
+    return (await this.options.getToken?.()) ?? null;
   }
 
   /** Whether the user can be heard needs both answers: the server's and the mic's. */

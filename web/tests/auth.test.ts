@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { Auth } from "../lib/auth.ts";
+import { Auth, TokenUnavailable } from "../lib/auth.ts";
 import { START_FORM, signInForm } from "../lib/sign-in-form.ts";
 
 const BASE = "http://voice.test";
@@ -147,4 +147,34 @@ test("a refresh token the server refuses signs the page out", async () => {
   assert.equal(await auth.getAccessToken(), null);
   assert.equal(auth.hasSession(), false);
   assert.equal(storage.items.size, 0);
+});
+
+test("a transient refresh failure keeps the stored refresh token", async () => {
+  for (const failure of [{ status: 503, body: { code: "unavailable", message: "I can't reach sign-in right now. Try again in a minute." } }, { status: 429, body: { code: "throttled", message: "Too many tries. Wait a few minutes, then try again." } }]) {
+    const storage = new FakeStorage();
+    storage.setItem("wren.refresh", "refresh-0");
+    const { auth } = makeAuth(voiceServer({ "/auth/refresh": () => failure }), storage);
+    await assert.rejects(auth.getAccessToken(), TokenUnavailable, "there is a sign-in, but no token right now");
+    assert.equal(storage.getItem("wren.refresh"), "refresh-0");
+    assert.equal(auth.hasSession(), true);
+  }
+  const storage = new FakeStorage();
+  storage.setItem("wren.refresh", "refresh-0");
+  const unreachable = async () => {
+    throw new TypeError("fetch failed");
+  };
+  const { auth } = makeAuth({ fetch: unreachable as typeof globalThis.fetch }, storage);
+  await assert.rejects(auth.getAccessToken(), TokenUnavailable);
+  assert.equal(storage.getItem("wren.refresh"), "refresh-0");
+});
+
+test("forgetting a sign-in clears it without calling the server", async () => {
+  const server = signedInServer();
+  const { auth, storage } = makeAuth(server);
+  await auth.signIn(EMAIL, PASSWORD);
+  auth.forget();
+  assert.equal(storage.items.size, 0);
+  assert.equal(auth.hasSession(), false);
+  assert.equal(await auth.getAccessToken(), null);
+  assert.deepEqual(server.calls.map((call) => call.url), [`${BASE}/auth/signin`]);
 });

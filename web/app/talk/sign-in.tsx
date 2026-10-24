@@ -75,7 +75,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: (needsAge: boolean) => void
   );
 }
 
-export function AgeStep({ onConfirmed }: { onConfirmed: () => void }) {
+export function AgeStep({ onConfirmed, onSignedOut }: { onConfirmed: () => void; onSignedOut: (message: string) => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [under18, setUnder18] = useState(false);
@@ -86,6 +86,7 @@ export function AgeStep({ onConfirmed }: { onConfirmed: () => void }) {
     const result = await auth.confirmAge(Intl.DateTimeFormat().resolvedOptions().timeZone);
     setBusy(false);
     if (result.ok) onConfirmed();
+    else if (result.code === "unauthorized") onSignedOut(result.message);
     else setError(result.message);
   };
 

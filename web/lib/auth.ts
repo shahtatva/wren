@@ -3,6 +3,10 @@
 //
 // The access token lives only in memory. The refresh token is kept in localStorage, so a reload
 // stays signed in. The password is never stored: it goes to the voice server once, at sign-in.
+//
+// Only the server refusing the refresh token signs the page out. A refresh that fails for any
+// other reason (a 429, a 503, no network) keeps the sign-in, and getAccessToken throws
+// TokenUnavailable, so callers wait and retry instead of going on without a token.
 
 // The import names its .ts file so `node --test` can load this module, as web/tests do.
 import { VOICE_SERVER_URL } from "./voice-server.ts";
@@ -13,6 +17,16 @@ const EARLY_MS = 60_000; // refresh when less than a minute is left
 // Shown when the voice server can't be reached at all (wren-voice: what happened, what to do next).
 export const UNREACHABLE = "I can't reach sign-in right now. Try again in a minute.";
 export const SIGNED_OUT = "You've been signed out. Sign in again to keep going.";
+
+/** There is a sign-in, but no token can be had right now. Try again later; don't sign out. */
+export class TokenUnavailable extends Error {
+  constructor() {
+    super("no sign-in token right now");
+    this.name = "TokenUnavailable";
+  }
+}
+
+type RefreshOutcome = "refreshed" | "signed-out" | "unavailable";
 
 export type Refusal = { ok: false; code: string; message: string };
 export type SignInResult = { ok: true; needsAge: boolean } | Refusal;
@@ -53,7 +67,7 @@ export class Auth {
   private readonly storage: () => Store | null;
   private readonly now: () => number;
   private access: { token: string; expiresAt: number } | null = null;
-  private refreshing: Promise<boolean> | null = null;
+  private refreshing: Promise<RefreshOutcome> | null = null;
 
   constructor(options: Options = {}) {
     this.base = options.base ?? VOICE_SERVER_URL;
@@ -82,48 +96,62 @@ export class Auth {
     return response?.ok ? { ok: true } : refusal(response);
   }
 
-  /** The access token, refreshed first when it has less than a minute left. Null when signed out. */
+  /** The access token, refreshed first when it has less than a minute left. Null when signed
+   * out. Throws TokenUnavailable when there is a sign-in but the refresh failed for now. */
   async getAccessToken(): Promise<string | null> {
     if (this.access && this.access.expiresAt - this.now() > EARLY_MS) return this.access.token;
-    await this.refresh();
-    return this.access && this.access.expiresAt > this.now() ? this.access.token : null;
+    const outcome = await this.refresh();
+    if (this.access && this.access.expiresAt > this.now()) return this.access.token;
+    if (outcome === "unavailable") throw new TokenUnavailable();
+    return null;
   }
 
+  /** Sign out here and at the server. */
   async signOut(): Promise<void> {
-    const token = await this.getAccessToken();
+    let token: string | null = null;
+    try {
+      token = await this.getAccessToken();
+    } catch {
+      // no token right now: this page still forgets the sign-in
+    }
     this.forget();
     if (token) await this.post("/auth/signout", {}, token);
   }
 
+  /** Forget the sign-in on this page only, with no request: for when the server has refused it already. */
+  forget(): void {
+    this.access = null;
+    this.storage()?.removeItem(REFRESH_KEY);
+  }
+
   /** One refresh at a time: a refresh token works once, so a second caller waits for the first. */
-  private refresh(): Promise<boolean> {
+  private refresh(): Promise<RefreshOutcome> {
     this.refreshing ??= this.refreshOnce().finally(() => {
       this.refreshing = null;
     });
     return this.refreshing;
   }
 
-  private async refreshOnce(): Promise<boolean> {
+  private async refreshOnce(): Promise<RefreshOutcome> {
     const refreshToken = this.storage()?.getItem(REFRESH_KEY);
-    if (!refreshToken) return false;
+    if (!refreshToken) return "signed-out";
     const response = await this.post("/auth/refresh", { refresh_token: refreshToken });
     if (response?.status === 401) {
       this.forget(); // the server refused it: sign in again
-      return false;
+      return "signed-out";
     }
-    if (!response?.ok) return false; // can't tell now: keep the refresh token for the next try
-    this.keep(await response.json());
-    return true;
+    if (!response?.ok) return "unavailable"; // keep the refresh token for the next try
+    try {
+      this.keep(await response.json());
+    } catch {
+      return "unavailable";
+    }
+    return "refreshed";
   }
 
   private keep(tokens: Tokens): void {
     this.access = { token: tokens.access_token, expiresAt: this.now() + tokens.expires_in * 1000 };
     this.storage()?.setItem(REFRESH_KEY, tokens.refresh_token);
-  }
-
-  private forget(): void {
-    this.access = null;
-    this.storage()?.removeItem(REFRESH_KEY);
   }
 
   private async post(path: string, body: object, token?: string): Promise<Response | null> {
