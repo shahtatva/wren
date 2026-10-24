@@ -6,6 +6,7 @@ do) needs no keys. Tests put their own Runtime on app.state.runtime.
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 from uuid import UUID
@@ -26,6 +27,10 @@ LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
 
 class Memories(Protocol):
     async def for_user(self, user_id: UUID) -> Memory: ...
+
+    async def age_confirmed(self, user_id: UUID) -> bool: ...  # raises when the database can't answer
+
+    async def confirm_age(self, user_id: UUID, at: datetime, tz: str) -> None: ...
 
 
 @dataclass

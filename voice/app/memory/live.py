@@ -173,12 +173,32 @@ class PostgresMemory:
 
         await asyncio.to_thread(self._run, work)
 
+    async def age_confirmed(self, user_id: UUID) -> bool:
+        def work(conn):
+            with store.as_user(conn, user_id):
+                return store.age_confirmed(conn, user_id)
+
+        return await asyncio.to_thread(self._run, work)
+
+    async def confirm_age(self, user_id: UUID, at: datetime, tz: str) -> None:
+        def work(conn):
+            with store.as_user(conn, user_id):
+                store.confirm_age(conn, user_id, at, tz)
+
+        await asyncio.to_thread(self._run, work)
+
 
 class MemoryProvider:
-    """Decides, per session, whether memory is on: the schema and the user must exist."""
+    """Decides, per session, whether memory is on: the schema and the user must exist.
+
+    It also answers the 18+ check, which fails closed: it raises when the database can't
+    answer. A confirmation never reverts, so confirmed users are remembered and skip the
+    database after that.
+    """
 
     def __init__(self, settings: Settings | None = None, tuning: Tuning = Tuning(), *, postgres=None):
         self._postgres = postgres or PostgresMemory(settings, tuning)
+        self._adults: set[UUID] = set()
 
     async def for_user(self, user_id: UUID) -> Memory:
         try:
@@ -189,3 +209,14 @@ class MemoryProvider:
             logger.warning("memory off for this session: %s", reason)
             return NoMemory(reason)
         return self._postgres
+
+    async def age_confirmed(self, user_id: UUID) -> bool:
+        if user_id in self._adults:
+            return True
+        if confirmed := await self._postgres.age_confirmed(user_id):
+            self._adults.add(user_id)
+        return confirmed
+
+    async def confirm_age(self, user_id: UUID, at: datetime, tz: str) -> None:
+        await self._postgres.confirm_age(user_id, at, tz)
+        self._adults.add(user_id)

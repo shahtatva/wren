@@ -16,7 +16,9 @@ import psycopg
 import pytest
 
 from app.memory.store import (
+    age_confirmed,
     append_turns,
+    confirm_age,
     as_user,
     end_session,
     hybrid_search_many,
@@ -164,3 +166,21 @@ def test_live_search_matches_owner_search(db):
     assert live[0] and [h.id for h in live[0]] == [h.id for h in owner[0]]
     assert "B's churn story" not in [h.text for h in live[0]]
     assert other == [[]]
+
+
+def test_age_confirmation_round_trip_as_user(db):
+    conn, a, b = db
+    first, later = NOW, NOW + timedelta(days=1)
+    with as_user(conn, a):
+        assert age_confirmed(conn, a) is False  # no profile row yet
+        confirm_age(conn, a, first, "America/Chicago")
+        assert age_confirmed(conn, a) is True
+        assert load_profile(conn, a).timezone == "America/Chicago"  # a new row takes the browser's zone
+        confirm_age(conn, a, later, "Asia/Tokyo")
+        row = conn.execute("select age_confirmed_at, timezone from public.profiles where user_id = %s", (a,)).fetchone()
+        assert row == (first, "America/Chicago")  # the first confirmation and the zone stay
+    with as_user(conn, b):
+        assert age_confirmed(conn, a) is False  # RLS: another user's row is invisible
+        conn.execute("insert into public.profiles (user_id, timezone) values (%s, 'Europe/London')", (b,))
+        confirm_age(conn, b, first, "America/Chicago")
+        assert age_confirmed(conn, b) is True and load_profile(conn, b).timezone == "Europe/London"

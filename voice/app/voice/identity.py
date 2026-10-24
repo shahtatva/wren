@@ -23,6 +23,13 @@ class Identity:
     dev: bool  # the loopback dev identity, only on the owner's machine
 
 
+def bearer_token(authorization: str | None) -> str | None:
+    """The token from an `Authorization: Bearer ...` header, or None."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    return authorization.removeprefix("Bearer ").strip() or None
+
+
 def is_loopback(host: str | None) -> bool:
     if not host:
         return False

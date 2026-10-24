@@ -21,12 +21,30 @@ class SlidingWindow:
         self._limit, self._window_s, self._clock = limit, window_s, clock
         self._hits: dict[str, deque[float]] = {}
 
-    def allow(self, key: str) -> bool:
-        now = self._clock()
-        hits = self._hits.setdefault(key, deque())
-        while hits and hits[0] <= now - self._window_s:
+    def has_room(self, key: str) -> bool:
+        hits = self._hits.get(key)
+        if hits is None:
+            return True
+        cutoff = self._clock() - self._window_s
+        while hits and hits[0] <= cutoff:
             hits.popleft()
-        if len(hits) >= self._limit:
+        return len(hits) < self._limit
+
+    def record(self, key: str) -> None:
+        self._hits.setdefault(key, deque()).append(self._clock())
+
+    def allow(self, key: str) -> bool:
+        if not self.has_room(key):
             return False
-        hits.append(now)
+        self.record(key)
         return True
+
+
+def allow_all(*checks: tuple[SlidingWindow, str]) -> bool:
+    """Count the request against every window, but only if all of them have room: a refused
+    request uses up no one's budget."""
+    if not all(window.has_room(key) for window, key in checks):
+        return False
+    for window, key in checks:
+        window.record(key)
+    return True

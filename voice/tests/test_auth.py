@@ -1,72 +1,21 @@
 """SupabaseAuth against a fake Supabase Auth, served through httpx.MockTransport."""
 
 import asyncio
-import base64
 import json
-from uuid import UUID
 
-import httpx
 import pytest
 
 from app.auth import SignInRefused, SupabaseAuth, Tokens
 from app.throttle import Throttled
-
-URL, KEY = "https://wren-test.supabase.co", "sb_secret_test"
-USER = UUID("6f1c2c1e-3d1a-4a52-9a43-0b7f2a1f9e10")
-START = 1_800_000_000.0  # wall-clock seconds; the tests move the clock by hand
-
-USER_BODY = {  # GET /auth/v1/user answers with UserSchema
-    "id": str(USER), "aud": "authenticated", "role": "authenticated", "email": "maya@example.com",
-    "email_confirmed_at": "2026-10-16T17:00:00Z", "phone": "", "confirmed_at": "2026-10-16T17:00:00Z",
-    "last_sign_in_at": "2026-10-24T09:00:00Z", "app_metadata": {"provider": "email", "providers": ["email"]},
-    "user_metadata": {}, "identities": [], "created_at": "2026-10-16T17:00:00Z",
-    "updated_at": "2026-10-24T09:00:00Z", "is_anonymous": False,
-}
-BAD_JWT = {"code": 403, "error_code": "bad_jwt", "msg": "invalid JWT: unable to parse or verify signature, token is expired"}
-INVALID_CREDENTIALS = {"code": 400, "error_code": "invalid_credentials", "msg": "Invalid login credentials"}
+from tests.supabase_fakes import (
+    BAD_JWT, INVALID_CREDENTIALS, KEY, RATE_LIMITED, SPENT_REFRESH, START, URL, USER, USER_BODY, Clock, FakeSupabase,
+    client_for, jwt, token_body,
+)
 
 
-def jwt(exp: float, n: int = 0) -> str:
-    """An access token's shape. SupabaseAuth reads only exp from it, unverified."""
-
-    def part(data: dict) -> str:
-        return base64.urlsafe_b64encode(json.dumps(data).encode()).rstrip(b"=").decode()
-
-    payload = {"sub": str(USER), "role": "authenticated", "session_id": f"session-{n}", "exp": int(exp)}
-    return f"{part({'alg': 'HS256', 'typ': 'JWT'})}.{part(payload)}.signature-{n}"
-
-
-def token_body(access: str, refresh: str) -> dict:  # POST /auth/v1/token answers with AccessTokenResponseSchema
-    return {
-        "access_token": access, "token_type": "bearer", "expires_in": 3600, "expires_at": int(START) + 3600,
-        "refresh_token": refresh, "user": USER_BODY,
-    }
-
-
-class FakeSupabase:
-    """Answers each request with the next scripted (status, body); the last one repeats."""
-
-    def __init__(self, *answers: tuple[int, dict | None]):
-        self.answers, self.requests = list(answers), []
-
-    def __call__(self, request: httpx.Request) -> httpx.Response:
-        self.requests.append(request)
-        status, body = self.answers[min(len(self.requests), len(self.answers)) - 1]
-        return httpx.Response(status) if body is None else httpx.Response(status, json=body)
-
-
-class Clock:
-    def __init__(self):
-        self.now = START
-
-    def __call__(self) -> float:
-        return self.now
-
-
-def make_auth(*answers):
+def make_auth(*answers, url=URL):
     supabase, clock = FakeSupabase(*answers), Clock()
-    client = httpx.AsyncClient(transport=httpx.MockTransport(supabase))
-    return SupabaseAuth(URL, KEY, client, clock=clock), supabase, clock
+    return SupabaseAuth(url, KEY, client_for(supabase), clock=clock), supabase, clock
 
 
 def test_a_valid_token_resolves_to_its_user_id():
@@ -182,7 +131,7 @@ def test_refresh_sends_the_refresh_grant():
 
 
 def test_a_spent_refresh_token_raises_sign_in_refused():
-    auth, _, _ = make_auth((400, {"code": 400, "error_code": "refresh_token_already_used", "msg": "Invalid Refresh Token: Already Used"}))
+    auth, _, _ = make_auth((400, SPENT_REFRESH))
     with pytest.raises(SignInRefused):
         asyncio.run(auth.refresh("refresh-1"))
 
@@ -209,6 +158,30 @@ def test_supabase_is_reached_only_over_https():
 
 
 def test_supabase_rate_limiting_a_lookup_counts_as_throttled():
-    auth, _, _ = make_auth((429, {"code": 429, "error_code": "over_request_rate_limit", "msg": "Request rate limit reached"}))
+    auth, _, _ = make_auth((429, RATE_LIMITED))
     with pytest.raises(Throttled):
         asyncio.run(auth.user_for_token(jwt(START + 3600)))
+
+
+def test_a_project_url_with_a_rest_path_still_reaches_auth():
+    auth, supabase, _ = make_auth((200, USER_BODY), url=f"{URL}/rest/v1/")
+    asyncio.run(auth.user_for_token(jwt(START + 3600)))
+    assert str(supabase.requests[0].url) == f"{URL}/auth/v1/user"
+
+
+def test_a_fresh_sign_in_needs_no_lookup_for_its_token():
+    token = jwt(START + 3600)
+    auth, supabase, _ = make_auth((200, token_body(token, "refresh-1")))
+
+    async def main():
+        tokens = await auth.sign_in("maya@example.com", "correct horse")
+        assert await auth.user_for_token(tokens.access_token) == USER
+
+    asyncio.run(main())
+    assert [r.url.path for r in supabase.requests] == ["/auth/v1/token"]  # Supabase just issued it
+
+
+def test_supabase_rate_limiting_a_sign_in_counts_as_throttled():
+    auth, _, _ = make_auth((429, RATE_LIMITED))
+    with pytest.raises(Throttled):
+        asyncio.run(auth.sign_in("maya@example.com", "correct horse"))

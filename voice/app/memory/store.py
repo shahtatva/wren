@@ -225,6 +225,29 @@ def last_session_started(
     return conn.execute(query, (user_id, before)).fetchone()[0]
 
 
+def confirm_age(conn: psycopg.Connection, user_id: UUID, at: datetime, tz: str, *, schema: str = "public") -> None:
+    """Record that the user confirmed they're 18 or older.
+
+    A new profile row takes the browser's zone, because the column's default is UTC and the
+    live path prefers the profile's zone. An existing row keeps its zone and its first
+    confirmation.
+    """
+    query = sql.SQL(
+        "insert into {} as p (user_id, age_confirmed_at, timezone) values (%s, %s, %s) "
+        "on conflict (user_id) do update set age_confirmed_at = coalesce(p.age_confirmed_at, excluded.age_confirmed_at)"
+    ).format(sql.Identifier(schema, "profiles"))
+    conn.execute(query, (user_id, at, tz))
+
+
+def age_confirmed(conn: psycopg.Connection, user_id: UUID, *, schema: str = "public") -> bool:
+    """False when the user hasn't confirmed, or has no profile row yet."""
+    query = sql.SQL("select age_confirmed_at is not null from {} where user_id = %s").format(
+        sql.Identifier(schema, "profiles")
+    )
+    row = conn.execute(query, (user_id,)).fetchone()
+    return bool(row and row[0])
+
+
 def load_profile(conn: psycopg.Connection, user_id: UUID, *, schema: str = "public") -> Profile | None:
     query = sql.SQL("select display_name, summary, target_roles, timezone from {} where user_id = %s").format(
         sql.Identifier(schema, "profiles")

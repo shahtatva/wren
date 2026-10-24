@@ -21,6 +21,7 @@ from app.conversation import ConversationRegistry
 from app.main import app
 from app.memory.live import NoMemory
 from app.runtime import Runtime
+from app.throttle import Throttled
 from app.voice import clock
 from app.voice.protocol import unpack_audio
 from app.voice.tuning import Tuning
@@ -129,14 +130,40 @@ class RecordingMemory(NoMemory):
 
 
 class FixedProvider:
-    def __init__(self, memory):
-        self.memory = memory
+    """Hands out one memory, and answers the age check with `adult`, raising it when it's an exception."""
+
+    def __init__(self, memory, *, adult: bool | Exception = True):
+        self.memory, self.adult, self.confirmed = memory, adult, []
 
     async def for_user(self, user_id):
         return self.memory
 
+    async def age_confirmed(self, user_id):
+        if isinstance(self.adult, Exception):
+            raise self.adult
+        return self.adult
 
-def make_runtime(chat, *, stt=None, tts=None, memory=None, tuning=FAST, dev_user=USER, stt_factory=None):
+    async def confirm_age(self, user_id, at, tz):
+        self.confirmed.append((user_id, at, tz))
+
+
+class FakeAuth:
+    """Stands in for SupabaseAuth.user_for_token: `users` maps tokens to user ids. With
+    throttled=True every lookup raises Throttled, as over the lookup cap."""
+
+    def __init__(self, users: dict[str, UUID], *, throttled: bool = False):
+        self.users, self.throttled, self.asked = dict(users), throttled, []
+
+    async def user_for_token(self, token):
+        self.asked.append(token)
+        if self.throttled:
+            raise Throttled("token lookups")
+        return self.users.get(token)
+
+
+def make_runtime(
+    chat, *, stt=None, tts=None, memory=None, tuning=FAST, dev_user=USER, stt_factory=None, auth=None, adult=True,
+):
     voice = VoiceSettings(
         deepgram_api_key="dg", deepgram_stt_model="nova-3", deepgram_tts_model="aura-2-vesta-en",
         groq_chat_model="fake-chat", groq_chat_fallback_model=None,
@@ -156,10 +183,11 @@ def make_runtime(chat, *, stt=None, tts=None, memory=None, tuning=FAST, dev_user
         tuning=tuning,
         chat=chat,
         registry=ConversationRegistry(),
-        memory=FixedProvider(memory or RecordingMemory()),
+        memory=FixedProvider(memory or RecordingMemory(), adult=adult),
         connect_stt=stt_factory,
         tts=tts if tts is not None else FakeTts(),
         turn_log=None,
+        auth=auth,
     )
 
 

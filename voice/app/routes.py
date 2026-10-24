@@ -20,7 +20,7 @@ from app.conversation import Conversation
 from app.runtime import get_runtime
 from app.turn import run_turn
 from app.voice import clock
-from app.voice.identity import resolve_identity
+from app.voice.identity import bearer_token, resolve_identity
 from app.voice.metrics import TurnTiming, log_turn
 from app.voice.protocol import Hello, parse_client
 from app.voice.session import VoiceSession
@@ -64,13 +64,6 @@ class TurnRequest(BaseModel):
     tz: str = Field(default="UTC", max_length=64)
 
 
-def _bearer(request: Request) -> str | None:
-    header = request.headers.get("authorization", "")
-    if not header.startswith("Bearer "):
-        return None
-    return header.removeprefix("Bearer ").strip() or None
-
-
 @router.post("/turn")
 async def post_turn(body: TurnRequest, request: Request) -> StreamingResponse:
     runtime = get_runtime(request.app)
@@ -78,7 +71,8 @@ async def post_turn(body: TurnRequest, request: Request) -> StreamingResponse:
     if origin is not None and origin not in runtime.voice.allowed_origins:
         raise HTTPException(status_code=403, detail="origin not allowed")
     identity = await resolve_identity(
-        _bearer(request), request.client.host if request.client else None, runtime.voice.dev_user_id, runtime.auth,
+        bearer_token(request.headers.get("authorization")), request.client.host if request.client else None,
+        runtime.voice.dev_user_id, runtime.auth,
     )
     if identity is None:
         raise HTTPException(status_code=401, detail="not signed in")

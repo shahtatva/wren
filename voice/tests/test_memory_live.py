@@ -133,3 +133,53 @@ def test_a_query_stopped_by_the_statement_timeout_is_not_rerun(monkeypatch):
     with pytest.raises(psycopg.errors.QueryCanceled):
         PostgresMemory(SETTINGS).unavailable_reason(USER)
     assert len(made) == 1 and not slow.closed  # the connection is fine; only the query was slow
+
+
+class AgePostgres(FakePostgres):
+    """Answers the age check from `confirmed`, or raises `error` like a database that's down."""
+
+    def __init__(self, confirmed=False, error=None):
+        super().__init__()
+        self.confirmed, self.age_error, self.confirmations = confirmed, error, []
+
+    async def age_confirmed(self, user_id):
+        if self.age_error:
+            raise self.age_error
+        return self.confirmed
+
+    async def confirm_age(self, user_id, at, tz):
+        if self.age_error:
+            raise self.age_error
+        self.confirmations.append((user_id, at, tz))
+
+
+def test_a_confirmed_adult_is_remembered_when_the_database_goes_down():
+    postgres = AgePostgres(confirmed=True)
+    provider = MemoryProvider(postgres=postgres)
+    assert asyncio.run(provider.age_confirmed(USER)) is True
+    postgres.age_error = psycopg.OperationalError("down")
+    assert asyncio.run(provider.age_confirmed(USER)) is True
+
+
+def test_an_unconfirmed_user_is_asked_about_again():
+    postgres = AgePostgres(confirmed=False)
+    provider = MemoryProvider(postgres=postgres)
+    assert asyncio.run(provider.age_confirmed(USER)) is False
+    postgres.confirmed = True
+    assert asyncio.run(provider.age_confirmed(USER)) is True
+
+
+def test_an_age_check_the_database_cant_answer_raises():
+    provider = MemoryProvider(postgres=AgePostgres(error=psycopg.OperationalError("down")))
+    with pytest.raises(psycopg.OperationalError):
+        asyncio.run(provider.age_confirmed(USER))
+
+
+def test_a_confirmation_is_remembered():
+    postgres = AgePostgres(confirmed=False)
+    provider = MemoryProvider(postgres=postgres)
+    at = datetime(2026, 10, 24, 15, 0, tzinfo=timezone.utc)
+    asyncio.run(provider.confirm_age(USER, at, "America/Chicago"))
+    assert postgres.confirmations == [(USER, at, "America/Chicago")]
+    postgres.age_error = psycopg.OperationalError("down")
+    assert asyncio.run(provider.age_confirmed(USER)) is True
