@@ -1,12 +1,15 @@
 """Give an account a password, with no email: the owner's tool for sign-in.
 
-    python -m app.tools.set_password you@example.com
+    python -m app.tools.set_password you@example.com [--visible]
 
 New Free Supabase projects can't edit their email templates, so Wren signs people in with a
 password the owner sets (sign-in plan, revised 2026-10-24). This finds the account through
 the Auth admin API and sets its password. It reads the password twice without showing it,
 and prints only whether it worked. It uses SUPABASE_URL and SUPABASE_SECRET_KEY from
 voice/.env; the secret key goes only in the apikey header.
+
+Hidden typing needs a real console. Where there isn't one (some IDE consoles), or with
+--visible, the password shows as it's typed instead.
 """
 
 import argparse
@@ -54,10 +57,22 @@ async def set_password(url: str, key: str, email: str, password: str, client: ht
             await http.aclose()
 
 
-def main(argv: list[str] | None = None, *, ask=getpass.getpass, settings=None, client=None) -> int:
+def _console() -> bool:
+    try:
+        return sys.stdin.isatty()
+    except (AttributeError, ValueError, OSError):
+        return False
+
+
+def main(argv: list[str] | None = None, *, ask=None, settings=None, client=None, terminal: bool | None = None) -> int:
     parser = argparse.ArgumentParser(description="Give a Wren account a password, with no email.")
     parser.add_argument("email")
+    parser.add_argument("--visible", action="store_true", help="show the password as you type it")
     args = parser.parse_args(argv)
+    # getpass hides typing, but only in a real console. Elsewhere it waits for keys that never arrive.
+    hidden = not args.visible and (_console() if terminal is None else terminal)
+    print("Nothing shows as you type. Type the password, then press Enter." if hidden else "The password will show as you type it.")
+    ask = ask or (getpass.getpass if hidden else input)
     password = ask("New password: ")
     if not password:
         print("No password given. Nothing changed.")
