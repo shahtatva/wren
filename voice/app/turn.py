@@ -11,7 +11,7 @@ the model stops on is dropped unless it ends a sentence, so a reply cut mid-word
 spoken or saved. gpt-oss sometimes finishes an answer and starts a second one with no
 space between them; the reply ends with the first. A reply with no whole sentence at all
 (empty, or one fragment) is asked for once more, before any audio, and if that fails too
-Wren says RETRY_LINE.
+Wren says RETRY_LINE, or at the opening, a plain greeting.
 
 The stages come in as callables, like retrieve()'s, so the server, evals and tests can
 each wire their own. Retrieval failing never fails the turn: Wren answers without memories.
@@ -42,6 +42,9 @@ CUT_OFF = " [cut off here. They didn't hear the rest]"
 OPENING = "[The session just started.]"
 MODES = {"checkin": "a check-in", "mock": "mock interview practice"}
 RETRY_LINE = "I lost my train of thought. Could you say that again?"
+# When the opening fails twice there's nothing to say again, so Wren just greets.
+OPENING_LINE = "Hey, good to have you back. How's the search going?"
+FIRST_OPENING_LINE = "Hi, I'm Wren, an AI here to help with your job search. How's it going so far?"
 _END_MARK = r"[.!?\u2026][\"'\u201d\u2019)\]]*"
 _SENTENCE_END = re.compile(_END_MARK + "$")
 # "...ready.Whenever you're ready, ...": a sentence end with no space, then a word that starts a
@@ -211,7 +214,10 @@ async def run_turn(
         )
     timing.reply_repair = "gave_up"
     timing.first_segment = clock.now()
-    yield RETRY_LINE
+    if user_text is not None:
+        yield RETRY_LINE
+    else:
+        yield FIRST_OPENING_LINE if convo.background.last_session_at is None else OPENING_LINE
 
 
 async def _whole_sentences(deltas: AsyncIterator[str], timing: TurnTiming) -> AsyncIterator[str]:

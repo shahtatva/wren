@@ -297,3 +297,12 @@ def test_the_retry_asks_the_model_differently():
     chat, timing = ScriptedChat([], ["Take your time."]), TurnTiming(3, "checkin", "voice")
     assert turn_out(chat, timing) == ["Take your time."]
     assert chat.retries == [False, True]
+
+
+@pytest.mark.parametrize("last_session", [False, True])
+def test_an_opening_that_fails_twice_greets_instead_of_asking_to_repeat(last_session):
+    chat, timing = ScriptedChat(["I"], ["I"]), TurnTiming(1, "checkin", "opening")
+    convo = conversation(turns=0, last_session=last_session)
+    (line,) = asyncio.run(_collect(run_turn(convo, None, retrieve=_no_memories, chat=chat, timing=timing)))
+    assert "again?" not in line and line.endswith("?") and timing.reply_repair == "gave_up"
+    assert ("an AI" in line) == (not last_session)  # a first session hears that Wren is an AI
