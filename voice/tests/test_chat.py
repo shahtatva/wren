@@ -119,7 +119,7 @@ def test_a_rate_limited_chat_model_falls_back_to_the_backup_groq_model_first():
     out = asyncio.run(collect(make_chat(SETTINGS, VOICE_WITH_BACKUP, groq=groq, gemini=gemini), timing))
     assert out == ["Backup here."]
     assert [c["model"] for c in groq.calls] == ["qwen/qwen3.8-27b", "openai/gpt-oss-120b"]
-    assert groq.calls[1]["reasoning_effort"] == "low"
+    assert groq.calls[1]["reasoning_effort"] == "medium"
     assert timing.model == "openai/gpt-oss-120b" and timing.chat_fallback == "RateLimited"
     assert gemini.calls == []
 
@@ -190,11 +190,11 @@ def test_cancel_closes_the_groq_stream():
     assert stream.closed
 
 
-def test_gpt_oss_gets_low_reasoning_without_reasoning_text():
+def test_gpt_oss_gets_medium_reasoning_without_reasoning_text():
     voice = VoiceSettings(**{**VOICE.__dict__, "groq_chat_model": "openai/gpt-oss-120b"})
     groq = FakeGroq(FakeGroqStream(["Hi."]))
     asyncio.run(collect(make_chat(SETTINGS, voice, groq=groq, gemini=FakeGemini([])), TurnTiming(1, "checkin", "text")))
-    assert groq.calls[0]["reasoning_effort"] == "low" and groq.calls[0]["include_reasoning"] is False
+    assert groq.calls[0]["reasoning_effort"] == "medium" and groq.calls[0]["include_reasoning"] is False
 
 
 def test_a_model_without_a_first_token_in_time_falls_back():

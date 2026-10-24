@@ -32,9 +32,14 @@ CHAT_FIRST_TOKEN_S = 4.0  # a model with no first token by then is skipped for t
 
 
 def _groq_options(model: str) -> dict:
-    """Reasoning settings per model family: reasoning tokens delay the first spoken word."""
+    """Reasoning settings per model family: reasoning tokens delay the first spoken word.
+
+    gpt-oss gets medium, not low. In 2026-10-23 replays, gpt-oss-120b at low invented a
+    story the user never told (4 of 4), garbled 988 in crisis replies (3 of 4) and glued a
+    second answer onto the first (3 of 8). At medium: 0 of 3, 0 of 3 and 0 of 3.
+    """
     if "gpt-oss" in model:
-        return {"reasoning_effort": "low", "include_reasoning": False}
+        return {"reasoning_effort": "medium", "include_reasoning": False}
     if "qwen" in model:
         return {"reasoning_effort": "none"}
     return {}

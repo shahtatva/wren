@@ -13,8 +13,10 @@ The loop is built. Implementation plan: [plans/2026-10-16-voice-loop.md](../plan
    - Nova-3's own endpointing fired about 1.5 s after the last word at `endpointing=10/100`, and not at all within 3 s at `300/500`.
    - After `Finalize`, finals arrive in about 100 ms. `speech_final` and `UtteranceEnd` still count if they come first.
 3. **Resumed speech while Wren is still thinking cancels and merges the reply** before any words arrive, because Nova-3's words lag the audio by about a second. A pause holds while the user is still talking.
-4. **The chat model is `qwen/qwen3.8-27b`**: median first token 186 ms, with the best persona fit of the three Groq models tried.
-   - When it's rate-limited, `openai/gpt-oss-120b` takes over, then Gemini Flash.
+4. **The chat model is `openai/gpt-oss-120b` at medium reasoning** (changed 2026-10-23, [plans/2026-10-23-whole-replies.md](../plans/2026-10-23-whole-replies.md)).
+   - It was `qwen/qwen3.8-27b` (median first token 186 ms). In a 59-turn session, about half of qwen's replies stopped after a word or two, or came back empty. Replaying two of those moments, 0 of 4 finished, and 0 of 8 with the repair's retry.
+   - gpt-oss-120b at low reasoning finished 14 of 14, but it invented a story the user never told (4 of 4), garbled 988 in crisis replies (3 of 4) and glued a second answer onto the first (3 of 8). At medium: 0 of 3 on each. First word about 600 ms at the median in those replays, against about 470 ms at low.
+   - When it's rate-limited, `openai/gpt-oss-20b` takes over, then Gemini Flash Lite. gpt-oss-20b is also the query-rewrite model, so the two share a limit, but only while the main model is rate-limited.
    - Gemini's free tier allows only 20 requests a day per model.
 5. **A `metrics` message carries each turn's timings to a debug panel.**
    - It shows TTFA, the end-of-speech, first-token and first-audio timestamps, and the stage breakdown.
