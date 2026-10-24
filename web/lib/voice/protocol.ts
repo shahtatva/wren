@@ -26,6 +26,7 @@ export type TurnMetrics = {
   chat_fallback: string | null;
   context_tokens: number | null;
   barge_in_ms: number | null;
+  reply_repair: "dropped_tail" | "retried" | "gave_up" | null;
 };
 
 export type ServerMessage =

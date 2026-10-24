@@ -48,6 +48,7 @@ class TurnTiming:
     context_tokens: int | None = None
     outcome: str | None = None  # complete, interrupted, continued, failed
     barge_in_ms: float | None = None  # the browser's onset-to-pause time, when interrupted
+    reply_repair: str | None = None  # dropped_tail, retried or gave_up: see run_turn
 
     def ttfa_ms(self) -> int | None:
         return _ms(self.speech_end, self.first_audio_sent)
@@ -75,6 +76,7 @@ class TurnTiming:
             "chat_fallback": self.chat_fallback,
             "context_tokens": self.context_tokens,
             "barge_in_ms": None if self.barge_in_ms is None else round(self.barge_in_ms),
+            "reply_repair": self.reply_repair,
         }
 
 

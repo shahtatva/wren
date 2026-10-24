@@ -6,12 +6,18 @@ context (persona card, live signals, profile, the next few days of pipeline, ret
 memories, the last few turns), streams the reply, and yields it one speakable segment
 at a time.
 
+A reply comes out whole. Each sentence is yielded as soon as it's complete, but the tail
+the model stops on is dropped unless it ends a sentence, so a reply cut mid-word is never
+spoken or saved. A reply with no whole sentence at all (empty, or one fragment) is asked
+for once more, before any audio, and if that fails too Wren says RETRY_LINE.
+
 The stages come in as callables, like retrieve()'s, so the server, evals and tests can
 each wire their own. Retrieval failing never fails the turn: Wren answers without memories.
 """
 
 import asyncio
 import logging
+import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import date, datetime, time, timezone
 from functools import cache
@@ -22,7 +28,7 @@ from app.conversation import Conversation, Retrieved
 from app.memory.types import PipelineEntry, Profile, SearchHit
 from app.voice import clock
 from app.voice.metrics import TurnTiming
-from app.voice.segment import segments
+from app.voice.segment import Segmenter
 from app.voice.tuning import Tuning
 
 logger = logging.getLogger(__name__)
@@ -31,9 +37,15 @@ PROMPTS = Path(__file__).resolve().parent / "prompts"
 CUT_OFF = " [cut off here. They didn't hear the rest]"
 OPENING = "[The session just started.]"
 MODES = {"checkin": "a check-in", "mock": "mock interview practice"}
+RETRY_LINE = "I lost my train of thought. Could you say that again?"
+_SENTENCE_END = re.compile(r"[.!?\u2026][\"'\u201d\u2019)\]]*$")
 
 Retrieve = Callable[[str], Awaitable[Retrieved]]
 Chat = Callable[[list[dict], TurnTiming], AsyncIterator[str]]
+
+
+def ends_a_sentence(text: str) -> bool:
+    return _SENTENCE_END.search(text.rstrip()) is not None
 
 
 @cache
@@ -168,7 +180,32 @@ async def run_turn(
     messages = build_messages(convo, user_text, hits, utcnow(), tuning)
     timing.context_tokens = sum(len(m["content"]) for m in messages) // 4  # rough, no tokenizer for every model
     timing.llm_start = clock.now()
-    async for segment in segments(chat(messages, timing)):
-        if timing.first_segment is None:
-            timing.first_segment = clock.now()
-        yield segment
+    for attempt in range(2):
+        spoke = False
+        async for segment in _whole_sentences(chat(messages, timing), timing):
+            if timing.first_segment is None:
+                timing.first_segment = clock.now()
+            spoke = True
+            yield segment
+        if spoke:
+            if attempt:
+                timing.reply_repair = "retried"
+            return
+        logger.warning("chat model %s sent no whole sentence%s", timing.model, " again" if attempt else ", asking again")
+    timing.reply_repair = "gave_up"
+    timing.first_segment = clock.now()
+    yield RETRY_LINE
+
+
+async def _whole_sentences(deltas: AsyncIterator[str], timing: TurnTiming) -> AsyncIterator[str]:
+    segmenter = Segmenter()
+    async for delta in deltas:
+        for segment in segmenter.feed(delta):
+            yield segment
+    for tail in segmenter.flush():
+        if ends_a_sentence(tail):
+            yield tail
+        else:
+            timing.reply_repair = "dropped_tail"
+            logger.warning("chat model %s stopped mid-sentence, dropped the unfinished tail", timing.model)
+

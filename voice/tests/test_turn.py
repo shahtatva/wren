@@ -7,7 +7,7 @@ import pytest
 
 from app.conversation import Background, Conversation, Retrieved
 from app.memory.types import PipelineEntry, Profile, SearchHit
-from app.turn import build_messages, run_turn
+from app.turn import build_messages, ends_a_sentence, run_turn
 from app.voice.metrics import TurnTiming
 from app.voice.tuning import Tuning
 
@@ -174,3 +174,68 @@ def test_the_persona_card_holds_every_boundary():
         "someone they trust", "only if they say they are", "under eighteen", "school counselor or career office",
     ):
         assert rule in content, rule
+
+
+async def _no_memories(text):
+    return Retrieved([], 0.0)
+
+
+class ScriptedChat:
+    def __init__(self, *replies):
+        self.replies, self.calls = list(replies), 0
+
+    async def __call__(self, messages, timing):
+        reply = self.replies[self.calls]
+        self.calls += 1
+        timing.model = "fake-model"
+        for delta in reply:
+            yield delta
+
+
+def turn_out(chat, timing):
+    return asyncio.run(_collect(run_turn(conversation(), "Elaborate, please.", retrieve=_no_memories, chat=chat, timing=timing)))
+
+
+def test_a_reply_that_stops_mid_sentence_is_asked_again():
+    chat, timing = ScriptedChat(["I have a"], ["I keep notes between sessions."]), TurnTiming(3, "checkin", "voice")
+    assert turn_out(chat, timing) == ["I keep notes between sessions."]
+    assert chat.calls == 2 and timing.reply_repair == "retried"
+
+
+def test_an_empty_reply_is_asked_again():
+    chat, timing = ScriptedChat([], ["Take your time."]), TurnTiming(3, "checkin", "voice")
+    assert turn_out(chat, timing) == ["Take your time."]
+
+
+def test_a_trailing_fragment_after_whole_sentences_is_dropped():
+    chat, timing = ScriptedChat(["Let's get back to your search. How"]), TurnTiming(3, "checkin", "voice")
+    assert turn_out(chat, timing) == ["Let's get back to your search."]
+    assert chat.calls == 1 and timing.reply_repair == "dropped_tail"
+
+
+def test_two_broken_replies_end_with_the_retry_line():
+    chat, timing = ScriptedChat(["I"], ["I"]), TurnTiming(3, "checkin", "voice")
+    assert turn_out(chat, timing) == ["I lost my train of thought. Could you say that again?"]
+    assert timing.reply_repair == "gave_up"
+
+
+def test_ends_a_sentence_accepts_ellipses_and_closing_quotes():
+    assert all(map(ends_a_sentence, ["Done.", "Really?", "Wait…", 'He said "go."', "(Sure.)"]))
+    assert not any(map(ends_a_sentence, ["I have a", "Nice to meet you,", ""]))
+
+
+def test_the_first_sentence_is_yielded_before_the_reply_ends():
+    release = asyncio.Event()
+
+    async def slow_chat(messages, timing):
+        yield "First sentence here. "
+        await release.wait()  # the rest of the reply hasn't come yet
+        yield "Second."
+
+    async def first_piece():
+        gen = run_turn(conversation(), "hi", retrieve=_no_memories, chat=slow_chat, timing=TurnTiming(3, "checkin", "voice"))
+        piece = await asyncio.wait_for(anext(gen), 1.0)
+        await gen.aclose()
+        return piece
+
+    assert asyncio.run(first_piece()) == "First sentence here."
