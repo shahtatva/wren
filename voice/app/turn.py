@@ -25,6 +25,7 @@ from contextlib import aclosing
 from datetime import date, datetime, time, timezone
 from functools import cache
 from pathlib import Path
+from typing import Protocol
 from zoneinfo import ZoneInfo
 
 from app.conversation import Conversation, Retrieved
@@ -48,7 +49,12 @@ _SENTENCE_END = re.compile(_END_MARK + "$")
 _GLUED_ANSWER = re.compile(r"(?<=[a-z0-9])" + _END_MARK + r"(?=(?:[A-Z][a-z]+|[AI])[\s,;:!?.'\u2019])")
 
 Retrieve = Callable[[str], Awaitable[Retrieved]]
-Chat = Callable[[list[dict], TurnTiming], AsyncIterator[str]]
+
+
+class Chat(Protocol):
+    """Streams the reply. retry=True is the second ask, after a reply with no whole sentence."""
+
+    def __call__(self, messages: list[dict], timing: TurnTiming, *, retry: bool = False) -> AsyncIterator[str]: ...
 
 
 def ends_a_sentence(text: str) -> bool:
@@ -189,7 +195,8 @@ async def run_turn(
     timing.llm_start = clock.now()
     for attempt in range(2):
         spoke = False
-        async for segment in _whole_sentences(chat(messages, timing), timing):
+        stream = chat(messages, timing, retry=True) if attempt else chat(messages, timing)
+        async for segment in _whole_sentences(stream, timing):
             if timing.first_segment is None:
                 timing.first_segment = clock.now()
             spoke = True
@@ -198,7 +205,10 @@ async def run_turn(
             if attempt:
                 timing.reply_repair = "retried"
             return
-        logger.warning("chat model %s sent no whole sentence%s", timing.model, " again" if attempt else ", asking again")
+        logger.warning(
+            "chat model %s sent no whole sentence (finish %s)%s",
+            timing.model, timing.finish_reason, " again" if attempt else ", asking again",
+        )
     timing.reply_repair = "gave_up"
     timing.first_segment = clock.now()
     yield RETRY_LINE
@@ -224,5 +234,8 @@ async def _whole_sentences(deltas: AsyncIterator[str], timing: TurnTiming) -> As
             yield tail
         else:
             timing.reply_repair = "dropped_tail"
-            logger.warning("chat model %s stopped mid-sentence, dropped the unfinished tail", timing.model)
+            logger.warning(
+                "chat model %s stopped mid-sentence (finish %s), dropped the unfinished tail",
+                timing.model, timing.finish_reason,
+            )
 

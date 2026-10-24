@@ -17,6 +17,7 @@ VOICE = VoiceSettings(
     allowed_origins=("http://localhost:3000",), dev_user_id=None,
 )
 VOICE_WITH_BACKUP = VoiceSettings(**{**VOICE.__dict__, "groq_chat_fallback_model": "openai/gpt-oss-120b"})
+VOICE_120B = VoiceSettings(**{**VOICE.__dict__, "groq_chat_model": "openai/gpt-oss-120b"})
 MESSAGES = [
     {"role": "system", "content": "You are Wren."},
     {"role": "user", "content": "hi"},
@@ -30,8 +31,11 @@ class RateLimited(Exception):
 
 
 class FakeGroqStream:
-    def __init__(self, deltas, fail_after=None, hang_after=None):
+    """Streams `deltas`, then a last chunk with the finish reason and token count when given."""
+
+    def __init__(self, deltas, fail_after=None, hang_after=None, finish=None, completion_tokens=None):
         self.deltas, self.fail_after, self.hang_after, self.closed = deltas, fail_after, hang_after, False
+        self.finish, self.completion_tokens = finish, completion_tokens
 
     def __aiter__(self):
         return self._gen()
@@ -43,6 +47,12 @@ class FakeGroqStream:
             if self.hang_after is not None and i == self.hang_after:
                 await asyncio.Event().wait()
             yield SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=d))])
+        if self.finish is not None:
+            usage = SimpleNamespace(completion_tokens=self.completion_tokens)
+            yield SimpleNamespace(
+                choices=[SimpleNamespace(delta=SimpleNamespace(content=None), finish_reason=self.finish)],
+                x_groq=SimpleNamespace(usage=usage),
+            )
 
     async def close(self):
         self.closed = True
@@ -204,3 +214,36 @@ def test_a_model_without_a_first_token_in_time_falls_back():
     assert asyncio.run(asyncio.wait_for(collect(chat, timing), 2)) == ["Okay."]  # never hang the suite
     assert timing.chat_fallback == "TimeoutError" and timing.model == "gemini-test-flash"
     assert stream.closed
+
+
+def test_gpt_oss_gets_room_to_reason_on_top_of_the_reply_cap():
+    groq = FakeGroq(FakeGroqStream(["Hi."]))
+    chat = make_chat(SETTINGS, VOICE_120B, max_tokens=400, groq=groq, gemini=FakeGemini([]))
+    asyncio.run(collect(chat, TurnTiming(1, "checkin", "text")))
+    assert groq.calls[0]["max_completion_tokens"] == 800
+
+
+def test_a_retry_asks_gpt_oss_with_low_reasoning():
+    groq = FakeGroq(FakeGroqStream(["Hi."]))
+    chat = make_chat(SETTINGS, VOICE_120B, groq=groq, gemini=FakeGemini([]))
+
+    async def retry():
+        return [d async for d in chat(MESSAGES, TurnTiming(1, "checkin", "text"), retry=True)]
+
+    assert asyncio.run(retry()) == ["Hi."]
+    assert groq.calls[0]["reasoning_effort"] == "low"
+
+
+def test_an_empty_reply_still_records_its_model_and_why_it_ended():
+    groq = FakeGroq(FakeGroqStream([], finish="length", completion_tokens=800))
+    timing = TurnTiming(1, "checkin", "text")
+    assert asyncio.run(collect(make_chat(SETTINGS, VOICE_120B, groq=groq, gemini=FakeGemini(["never"])), timing)) == []
+    assert timing.model == "openai/gpt-oss-120b" and timing.finish_reason == "length" and timing.completion_tokens == 800
+
+
+def test_a_reply_records_why_it_ended_and_its_token_count():
+    groq = FakeGroq(FakeGroqStream(["Sprout", " is Friday."], finish="stop", completion_tokens=57))
+    timing = TurnTiming(1, "checkin", "text")
+    asyncio.run(collect(make_chat(SETTINGS, VOICE, groq=groq, gemini=FakeGemini([])), timing))
+    record = timing.record()
+    assert record["finish_reason"] == "stop" and record["completion_tokens"] == 57

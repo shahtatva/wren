@@ -27,6 +27,8 @@ export type TurnMetrics = {
   context_tokens: number | null;
   barge_in_ms: number | null;
   reply_repair: "dropped_tail" | "retried" | "gave_up" | null;
+  finish_reason: string | null;
+  completion_tokens: number | null;
 };
 
 export type ServerMessage =

@@ -182,11 +182,12 @@ async def _no_memories(text):
 
 class ScriptedChat:
     def __init__(self, *replies):
-        self.replies, self.calls = list(replies), 0
+        self.replies, self.calls, self.retries = list(replies), 0, []
 
-    async def __call__(self, messages, timing):
+    async def __call__(self, messages, timing, *, retry=False):
         reply = self.replies[self.calls]
         self.calls += 1
+        self.retries.append(retry)
         timing.model = "fake-model"
         for delta in reply:
             yield delta
@@ -290,3 +291,9 @@ def test_a_glued_answer_starting_with_i_is_dropped():
     chat, timing = ScriptedChat(["Take your time.I'm here when you're ready. "]), TurnTiming(3, "checkin", "voice")
     assert turn_out(chat, timing) == ["Take your time."]
     assert timing.reply_repair == "dropped_stacked"
+
+
+def test_the_retry_asks_the_model_differently():
+    chat, timing = ScriptedChat([], ["Take your time."]), TurnTiming(3, "checkin", "voice")
+    assert turn_out(chat, timing) == ["Take your time."]
+    assert chat.retries == [False, True]

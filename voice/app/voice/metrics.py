@@ -49,6 +49,8 @@ class TurnTiming:
     outcome: str | None = None  # complete, interrupted, continued, failed
     barge_in_ms: float | None = None  # the browser's onset-to-pause time, when interrupted
     reply_repair: str | None = None  # dropped_tail, retried or gave_up: see run_turn
+    finish_reason: str | None = None  # why the model's stream ended: "length" means the token cap
+    completion_tokens: int | None = None  # reasoning plus reply, as the provider counted them
 
     def ttfa_ms(self) -> int | None:
         return _ms(self.speech_end, self.first_audio_sent)
@@ -77,6 +79,8 @@ class TurnTiming:
             "context_tokens": self.context_tokens,
             "barge_in_ms": None if self.barge_in_ms is None else round(self.barge_in_ms),
             "reply_repair": self.reply_repair,
+            "finish_reason": self.finish_reason,
+            "completion_tokens": self.completion_tokens,
         }
 
 

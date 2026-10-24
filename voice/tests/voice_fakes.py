@@ -94,7 +94,7 @@ class FakeChat:
         self.delay_before = dict(delay_before or {})
         self.calls, self.cancelled = [], []
 
-    async def __call__(self, messages, timing):
+    async def __call__(self, messages, timing, *, retry=False):
         index = len(self.calls)
         self.calls.append(messages)
         timing.model = "fake-chat"

@@ -29,20 +29,27 @@ logger = logging.getLogger(__name__)
 
 GROQ_TIMEOUT_S = 10.0  # a stall guard; warm first tokens arrive in a few hundred ms
 CHAT_FIRST_TOKEN_S = 4.0  # a model with no first token by then is skipped for the next one
+REASONING_TOKENS = 400  # gpt-oss's reasoning counts toward max_completion_tokens, so it gets this on top
 
 
-def _groq_options(model: str) -> dict:
-    """Reasoning settings per model family: reasoning tokens delay the first spoken word.
+def _groq_options(model: str, max_tokens: int, retry: bool) -> dict:
+    """Token cap and reasoning settings per model family: reasoning tokens delay the first spoken word.
 
     gpt-oss gets medium, not low. In 2026-10-23 replays, gpt-oss-120b at low invented a
     story the user never told (4 of 4), garbled 988 in crisis replies (3 of 4) and glued a
-    second answer onto the first (3 of 8). At medium: 0 of 3, 0 of 3 and 0 of 3.
+    second answer onto the first (3 of 8). At medium: 0 of 3, 0 of 3 and 0 of 3. A retry
+    runs at low: it follows a reply with no whole sentence, which reasoning that fills the
+    token budget can cause.
     """
     if "gpt-oss" in model:
-        return {"reasoning_effort": "medium", "include_reasoning": False}
+        return {
+            "max_completion_tokens": max_tokens + REASONING_TOKENS,
+            "reasoning_effort": "low" if retry else "medium",
+            "include_reasoning": False,
+        }
     if "qwen" in model:
-        return {"reasoning_effort": "none"}
-    return {}
+        return {"max_completion_tokens": max_tokens, "reasoning_effort": "none"}
+    return {"max_completion_tokens": max_tokens}
 
 
 def _gemini_request(messages: list[dict]) -> tuple[str, list[types.Content]]:
@@ -66,19 +73,19 @@ def make_chat(
         groq_models.append(voice.groq_chat_fallback_model)
     gemini_models = voice.gemini_chat_models or (settings.gemini_flash_model,)
 
-    async def groq_deltas(model: str, messages: list[dict]) -> AsyncIterator[str]:
+    async def groq_deltas(model: str, messages: list[dict], timing: TurnTiming, retry: bool) -> AsyncIterator[str]:
         stream = await groq.chat.completions.create(
-            model=model,
-            messages=messages,
-            stream=True,
-            max_completion_tokens=max_tokens,
-            **_groq_options(model),
+            model=model, messages=messages, stream=True, **_groq_options(model, max_tokens, retry),
         )
         try:
             async for chunk in stream:
-                delta = chunk.choices[0].delta.content if chunk.choices else None
-                if delta:
-                    yield delta
+                choice = chunk.choices[0] if chunk.choices else None
+                if finish := getattr(choice, "finish_reason", None):  # "length" means it hit the token cap
+                    timing.finish_reason = finish
+                if usage := getattr(chunk, "usage", None) or getattr(getattr(chunk, "x_groq", None), "usage", None):
+                    timing.completion_tokens = usage.completion_tokens
+                if choice is not None and choice.delta.content:
+                    yield choice.delta.content
         finally:
             await stream.close()
 
@@ -93,14 +100,15 @@ def make_chat(
             if chunk.text:
                 yield chunk.text
 
-    async def chat(messages: list[dict], timing: TurnTiming) -> AsyncIterator[str]:
-        sources = [(m, groq_deltas(m, messages)) for m in groq_models]
+    async def chat(messages: list[dict], timing: TurnTiming, *, retry: bool = False) -> AsyncIterator[str]:
+        sources = [(m, groq_deltas(m, messages, timing, retry)) for m in groq_models]
         sources += [(m, gemini_deltas(m, messages)) for m in gemini_models]
         last_error: Exception | None = None
         for model, source in sources:
             try:
                 first = await asyncio.wait_for(anext(source), first_token_s)
             except StopAsyncIteration:
+                timing.model = model  # an empty reply still says which model sent it
                 return
             except Exception as e:
                 logger.warning("chat model %s failed before its first token: %s: %s", model, type(e).__name__, e)
