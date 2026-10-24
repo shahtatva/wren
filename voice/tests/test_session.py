@@ -1,17 +1,22 @@
+import asyncio
 import logging
 import time
 from dataclasses import replace
 from datetime import datetime
+from uuid import UUID
 
+import psycopg
 import pytest
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from app.main import app
+from app.memory.live import MemoryProvider
 from app.voice.events import SpeechStarted, Transcript
 from tests.voice_fakes import (
     FAST,
     ORIGIN,
+    FakeAuth,
     FakeChat,
     FakeStt,
     FakeTts,
@@ -67,6 +72,96 @@ def test_without_an_identity_the_hello_is_refused():
                 assert wire.next() == {"type": "_closed", "code": 4401}
     finally:
         app.state.runtime = None
+
+
+SIGNED_IN = UUID("0b8d1f4e-9c2a-4f6e-8a1d-3e5f7a9b1c2d")
+AWAY = "203.0.113.9"  # not loopback: only a token gets in
+
+
+def signed_in_runtime(**options):
+    return make_runtime(FakeChat([OPENING]), auth=FakeAuth({"good-token": SIGNED_IN}), dev_user=None, **options)
+
+
+def refused_hello(runtime, client_host=AWAY, **hello):
+    """Send a hello and return the error and the close that follow it."""
+    app.state.runtime = runtime
+    try:
+        with TestClient(app, client=(client_host, 50000)) as client:
+            with client.websocket_connect("/ws", headers={"origin": ORIGIN}) as ws:
+                ws.send_json({"type": "hello", **hello})
+                wire = Wire(ws)
+                return wire.next(), wire.next()
+    finally:
+        app.state.runtime = None
+
+
+def test_hello_with_a_valid_token_starts_a_session():
+    memory = RecordingMemory()
+    with voice_session(signed_in_runtime(memory=memory), client_host=AWAY, token="good-token") as (_, _, ready):
+        assert ready["type"] == "ready"
+    assert memory.opened == [SIGNED_IN]
+
+
+def test_an_unknown_token_is_refused_for_good():
+    error, closed = refused_hello(signed_in_runtime(), token="junk")
+    assert error["code"] == "unauthorized" and error["message"] and closed == {"type": "_closed", "code": 4401}
+
+
+def test_hello_without_age_confirmation_is_refused():
+    error, closed = refused_hello(signed_in_runtime(adult=False), token="good-token")
+    assert error["code"] == "age_unconfirmed" and error["message"] and closed == {"type": "_closed", "code": 4401}
+
+
+def test_an_unanswered_age_check_closes_with_the_retry_code():
+    error, closed = refused_hello(signed_in_runtime(adult=psycopg.OperationalError("down")), token="good-token")
+    assert error["code"] == "age_check_failed" and error["message"] and closed == {"type": "_closed", "code": 4503}
+
+
+def test_too_many_token_lookups_close_with_the_retry_code():
+    runtime = make_runtime(FakeChat([OPENING]), auth=FakeAuth({}, throttled=True), dev_user=None)
+    error, closed = refused_hello(runtime, token="good-token")
+    assert error["code"] == "unavailable" and error["message"] and closed == {"type": "_closed", "code": 4503}
+
+
+class FlakyPostgres:
+    """Up, until `error` is set: then every call raises it, like an unreachable database."""
+
+    def __init__(self):
+        self.error = None
+
+    def unavailable_reason(self, user_id):
+        if self.error:
+            raise self.error
+        return None
+
+    async def age_confirmed(self, user_id):
+        if self.error:
+            raise self.error
+        return True
+
+
+def test_a_remembered_adult_starts_while_the_database_is_down():
+    postgres = FlakyPostgres()
+    runtime = signed_in_runtime()
+    runtime.memory = MemoryProvider(postgres=postgres)
+    assert asyncio.run(runtime.memory.age_confirmed(SIGNED_IN))  # an earlier session's check
+    postgres.error = psycopg.OperationalError("down")
+    with voice_session(runtime, client_host=AWAY, token="good-token") as (_, _, ready):
+        assert ready["memory"].startswith("off: database unreachable")
+
+
+def test_the_dev_identity_skips_the_age_check():
+    with voice_session(make_runtime(FakeChat([OPENING]), adult=False)) as (_, _, ready):
+        assert ready["type"] == "ready"
+
+
+def test_a_refused_hello_never_logs_its_token(caplog):
+    caplog.set_level(logging.DEBUG)
+    refused_hello(signed_in_runtime(), token="secret-token-value")
+    refused_hello(signed_in_runtime(adult=False), token="good-token")
+    refused_hello(signed_in_runtime(adult=psycopg.OperationalError("down")), token="good-token")
+    assert caplog.records
+    assert "secret-token-value" not in caplog.text and "good-token" not in caplog.text
 
 
 def test_opening_then_voice_turn_streams_segments_audio_and_metrics():

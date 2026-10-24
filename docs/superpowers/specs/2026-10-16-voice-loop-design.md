@@ -206,7 +206,8 @@ Arrows: `→` is browser to `voice/`, and `←` is `voice/` to browser.
 
 **Close codes.** A foreign `Origin` gets the handshake refused (HTTP 403). After that, the server closes the socket with:
 - `4400`: no valid hello within 5 s
-- `4401`: refused, with an `error` first saying why. The page doesn't reconnect.
+- `4401`: refused, with an `error` first saying why: `unauthorized` (no valid sign-in) or `age_unconfirmed` (no 18+ confirmation yet). The page doesn't reconnect; it shows sign-in or the age step.
+- `4503`: refused for now, after `error {code: "age_check_failed"}` (the database couldn't answer the age check) or `error {code: "unavailable"}` (the token couldn't be checked with Supabase). The page keeps that message on screen and reconnects with its usual backoff.
 - `4410`: the session is over (the 45-minute cap), after `error {code: "session_over"}`. The page doesn't reconnect, and keeps that message on screen.
 
 After `4401` or `4410` the page lets go of the mic and that session. Its next tap or message starts a new session.

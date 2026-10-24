@@ -1,9 +1,13 @@
 import json
+from uuid import UUID
 
+import psycopg
 from starlette.testclient import TestClient
 
 from app.main import app
-from tests.voice_fakes import ORIGIN, FakeChat, RecordingMemory, make_runtime
+from tests.voice_fakes import ORIGIN, FakeAuth, FakeChat, RecordingMemory, make_runtime
+
+SIGNED_IN = UUID("0b8d1f4e-9c2a-4f6e-8a1d-3e5f7a9b1c2d")
 
 
 def lines(response):
@@ -60,3 +64,40 @@ def test_post_turn_ignores_a_non_bearer_authorization_header():
         assert response.status_code == 200
     finally:
         app.state.runtime = None
+
+
+def post_signed_in(text="hello", token="good-token", **options):
+    memory = RecordingMemory()
+    app.state.runtime = make_runtime(
+        FakeChat([["Hi there."]]), memory=memory, auth=FakeAuth({"good-token": SIGNED_IN}), dev_user=None, **options,
+    )
+    try:
+        with TestClient(app, client=("203.0.113.9", 50000)) as client:
+            headers = {"origin": ORIGIN, "authorization": f"Bearer {token}"}
+            return client.post("/turn", json={"text": text}, headers=headers), memory
+    finally:
+        app.state.runtime = None
+
+
+def test_post_turn_accepts_a_bearer_token():
+    response, memory = post_signed_in()
+    assert response.status_code == 200 and lines(response)[-1]["metrics"]["outcome"] == "complete"
+    assert memory.opened == [SIGNED_IN]
+
+
+def test_post_turn_with_an_unknown_token_is_401_with_a_message():
+    response, _ = post_signed_in(token="junk")
+    assert response.status_code == 401
+    assert response.json()["code"] == "unauthorized" and response.json()["message"]
+
+
+def test_post_turn_without_age_confirmation_is_403():
+    response, memory = post_signed_in(adult=False)
+    assert response.status_code == 403
+    assert response.json()["code"] == "age_unconfirmed" and response.json()["message"]
+    assert memory.opened == []
+
+
+def test_post_turn_when_the_age_check_cant_answer_is_503():
+    response, _ = post_signed_in(adult=psycopg.OperationalError("down"))
+    assert response.status_code == 503 and response.json()["code"] == "age_check_failed"

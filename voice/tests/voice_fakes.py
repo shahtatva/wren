@@ -120,7 +120,11 @@ class FakeChat:
 class RecordingMemory(NoMemory):
     def __init__(self):
         super().__init__("test")
-        self.appended, self.closed = [], []
+        self.appended, self.closed, self.opened = [], [], []
+
+    async def open_session(self, user_id, mode, tz, resume_id, now):
+        self.opened.append(user_id)
+        return await super().open_session(user_id, mode, tz, resume_id, now)
 
     async def append(self, session_id, user_id, turns):
         self.appended.extend(turns)
