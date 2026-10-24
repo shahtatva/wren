@@ -11,17 +11,16 @@ def test_splits_sentences_as_they_complete():
     assert seg.flush() == ["That gives you a night."]
 
 
-def test_first_segment_breaks_early_at_a_clause():
-    seg = Segmenter(first_min_words=5)
-    assert seg.feed("Okay, so the Sprout screen is Friday, which gives you") == ["Okay, so the Sprout screen is Friday,"]
-    # Only the first segment breaks at a clause. Later ones wait for the sentence end.
-    assert seg.feed(" one more night, honestly. Want") == ["which gives you one more night, honestly."]
+def test_a_first_sentence_with_a_comma_stays_whole():
+    seg = Segmenter()
+    pieces = seg.feed("As an AI, I generate text based on patterns, and sometimes it stops. Next. ") + seg.flush()
+    assert pieces == ["As an AI, I generate text based on patterns, and sometimes it stops.", "Next."]
 
 
 def test_does_not_split_abbreviations_or_decimals():
     seg = Segmenter()
     out = seg.feed("Dr. Lee said it's 2.5 times better, e.g. the alumni story. Nice")
-    assert out == ["Dr. Lee said it's 2.5 times better,", "e.g. the alumni story."]
+    assert out == ["Dr. Lee said it's 2.5 times better, e.g. the alumni story."]
     assert seg.feed(" one. ") == ["Nice one."]
 
 

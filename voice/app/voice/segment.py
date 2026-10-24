@@ -1,10 +1,10 @@
 """Split a streaming reply into speakable segments, and clean what shouldn't be spoken.
 
 Each segment goes to text-to-speech on its own, so audio can start before the reply is
-finished. Segments end at sentence ends. The first may also end at a clause once it
-has a few words, which starts audio sooner. A run-on with no punctuation is cut at a
-word cap. The persona card already asks for plain spoken text; clean() is the safety
-net for the markdown, emoji and links models slip in anyway.
+finished. Segments end at sentence ends, never at a comma: each segment is a separate
+recording, so a split sentence changes voice halfway. A run-on with no punctuation is
+cut at a word cap. The persona card already asks for plain spoken text; clean() is the
+safety net for the markdown, emoji and links models slip in anyway.
 """
 
 import re
@@ -13,7 +13,6 @@ from collections.abc import AsyncIterator
 ABBREVIATIONS = frozenset({"mr", "mrs", "ms", "dr", "st", "vs", "e.g", "i.e", "jr", "sr", "prof", "mt"})
 
 _SENTENCE_END = re.compile(r"[.!?]+[\"'\u201d\u2019)\]]*(?=\s)")
-_CLAUSE_END = re.compile(r"[,;:](?=\s)")
 _COMPLETE_WORD = re.compile(r"\S+(?=\s)")
 _LAST_WORD = re.compile(r"(\S+)$")
 
@@ -48,11 +47,9 @@ def clean(text: str) -> str:
 
 
 class Segmenter:
-    def __init__(self, first_min_words: int = 5, max_words: int = 30):
-        self._first_min_words = first_min_words
+    def __init__(self, max_words: int = 30):
         self._max_words = max_words
         self._buf = ""
-        self._first = True
 
     def _sentence_end(self) -> int | None:
         for match in _SENTENCE_END.finditer(self._buf):
@@ -63,14 +60,6 @@ class Segmenter:
             return match.end()
         return None
 
-    def _clause_end(self) -> int | None:
-        if not self._first:
-            return None
-        for match in _CLAUSE_END.finditer(self._buf):
-            if len(self._buf[: match.start()].split()) >= self._first_min_words:
-                return match.end()
-        return None
-
     def _word_cap(self) -> int | None:
         words = list(_COMPLETE_WORD.finditer(self._buf))
         if len(words) > self._max_words:
@@ -78,14 +67,13 @@ class Segmenter:
         return None
 
     def _next_split(self) -> int | None:
-        found = [i for i in (self._sentence_end(), self._clause_end(), self._word_cap()) if i is not None]
+        found = [i for i in (self._sentence_end(), self._word_cap()) if i is not None]
         return min(found) if found else None
 
     def _emit(self, raw: str, out: list[str]) -> None:
         text = clean(raw)
         if text:
             out.append(text)
-            self._first = False
 
     def feed(self, delta: str) -> list[str]:
         self._buf += delta
