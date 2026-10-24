@@ -8,8 +8,10 @@ at a time.
 
 A reply comes out whole. Each sentence is yielded as soon as it's complete, but the tail
 the model stops on is dropped unless it ends a sentence, so a reply cut mid-word is never
-spoken or saved. A reply with no whole sentence at all (empty, or one fragment) is asked
-for once more, before any audio, and if that fails too Wren says RETRY_LINE.
+spoken or saved. gpt-oss sometimes finishes an answer and starts a second one with no
+space between them; the reply ends with the first. A reply with no whole sentence at all
+(empty, or one fragment) is asked for once more, before any audio, and if that fails too
+Wren says RETRY_LINE.
 
 The stages come in as callables, like retrieve()'s, so the server, evals and tests can
 each wire their own. Retrieval failing never fails the turn: Wren answers without memories.
@@ -19,6 +21,7 @@ import asyncio
 import logging
 import re
 from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import aclosing
 from datetime import date, datetime, time, timezone
 from functools import cache
 from pathlib import Path
@@ -38,7 +41,9 @@ CUT_OFF = " [cut off here. They didn't hear the rest]"
 OPENING = "[The session just started.]"
 MODES = {"checkin": "a check-in", "mock": "mock interview practice"}
 RETRY_LINE = "I lost my train of thought. Could you say that again?"
-_SENTENCE_END = re.compile(r"[.!?\u2026][\"'\u201d\u2019)\]]*$")
+_END_MARK = r"[.!?\u2026][\"'\u201d\u2019)\]]*"
+_SENTENCE_END = re.compile(_END_MARK + "$")
+_GLUED_ANSWER = re.compile(r"(?<=[a-z0-9])" + _END_MARK + "(?=[A-Z])")  # "...ready.Whenever you're ready, ..."
 
 Retrieve = Callable[[str], Awaitable[Retrieved]]
 Chat = Callable[[list[dict], TurnTiming], AsyncIterator[str]]
@@ -198,10 +203,17 @@ async def run_turn(
 
 
 async def _whole_sentences(deltas: AsyncIterator[str], timing: TurnTiming) -> AsyncIterator[str]:
-    segmenter = Segmenter()
-    async for delta in deltas:
-        for segment in segmenter.feed(delta):
-            yield segment
+    segmenter, reply = Segmenter(), ""
+    async with aclosing(deltas) as stream:
+        async for delta in stream:
+            seen, reply = len(reply), reply + delta
+            glued = _GLUED_ANSWER.search(reply)
+            for segment in segmenter.feed(delta if glued is None else delta[: glued.end() - seen]):
+                yield segment
+            if glued is not None:  # closing the stream stops generation
+                timing.reply_repair = "dropped_stacked"
+                logger.warning("chat model %s started a second answer, dropped it", timing.model)
+                break
     for tail in segmenter.flush():
         if ends_a_sentence(tail):
             yield tail

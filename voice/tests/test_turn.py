@@ -239,3 +239,31 @@ def test_the_first_sentence_is_yielded_before_the_reply_ends():
         return piece
 
     assert asyncio.run(first_piece()) == "First sentence here."
+
+
+def test_a_second_answer_glued_to_the_first_is_dropped():
+    # gpt-oss sometimes finishes its answer and starts another, with no space between them.
+    chat, timing = ScriptedChat(["Take your time. What's the company?Whenever you're ready, just tell me the name."]), TurnTiming(3, "checkin", "voice")
+    assert turn_out(chat, timing) == ["Take your time.", "What's the company?"]
+    assert timing.reply_repair == "dropped_stacked"
+
+
+def test_a_glued_answer_across_deltas_is_dropped_and_the_stream_closed():
+    closed = []
+
+    async def chat(messages, timing):
+        try:
+            for delta in ("Sure, tell me the company when you're ready.", "Okay, let's focus", " on that company. "):
+                yield delta
+        finally:
+            closed.append(True)
+
+    timing = TurnTiming(3, "checkin", "voice")
+    assert turn_out(chat, timing) == ["Sure, tell me the company when you're ready."]
+    assert closed == [True] and timing.reply_repair == "dropped_stacked"
+
+
+def test_glued_looking_text_inside_a_sentence_is_kept():
+    chat, timing = ScriptedChat(["It's 2.5 times better on Node.js in the U.S. Want to try?"]), TurnTiming(3, "checkin", "voice")
+    assert turn_out(chat, timing) == ["It's 2.5 times better on Node.js in the U.S.", "Want to try?"]
+    assert timing.reply_repair is None
