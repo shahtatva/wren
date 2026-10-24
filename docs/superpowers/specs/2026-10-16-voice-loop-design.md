@@ -142,7 +142,12 @@ One browser tab holds one WebSocket to `voice/`. Per session, `voice/` holds one
    - The last 6 turns.
    - The user text.
 4. **Stream the reply** from Groq (`AsyncGroq`, `stream=True`). On a 429 or an error before the first token, fall back to streaming Gemini Flash.
-5. **Segment.** Yield each sentence as it completes. To start audio sooner, the first segment may break at a clause boundary after 5 or more words. As a safety net, strip markdown, emoji and links.
+5. **Segment.** Yield each sentence as it completes, never splitting one at a comma: each segment is a separate Aura-2 recording, so a split sentence changes voice halfway. A run-on is still cut at 30 words. As a safety net, strip markdown, emoji and links.
+6. **Keep the reply whole** (2026-10-23).
+   - The tail the stream ends on is spoken only if it ends a sentence; otherwise it's dropped, never spoken or saved.
+   - A second answer glued to the first with no space ("...ready.Whenever you're ready, ...") ends the reply, and the stream is closed.
+   - A reply with no whole sentence at all is asked for once more, before any audio. If that fails too, Wren says "I lost my train of thought. Could you say that again?"
+   - `reply_repair` in the timing record says which of these happened: `dropped_tail`, `dropped_stacked`, `retried` or `gave_up`.
 
 It records retrieval time, time to first token, first-segment time and context tokens for the metrics.
 
@@ -276,11 +281,21 @@ The adapter emits the same events a Flux adapter would, so trying Flux later is 
 | Retrieval | under 300 ms | Already logged against its budget. Changes go through evals, and E2 covers rewrite cost |
 | Context assembly | under 20 ms | Session-level data loads once |
 | LLM time to first token | about 200 ms | Model choice, measured in M1 |
-| First segment complete | about 50 ms | Early clause break |
+| First segment complete | about 50 ms | Shorter sentences, through the persona card. Not a clause break: a split sentence changes voice halfway |
 | Aura-2 time to first byte | about 200 ms | A warm connection, opened at session start |
 | **Total** | **about 1,050 ms** | |
 
 The total is right at the 1.0 s p50 target, so the per-stage log matters more than any one optimization. Mock turns hold longer on purpose and are reported separately. The spec already says targets get revised once, after the first measurements.
+
+**Measured 2026-10-23,** the bench with barge-in, memory off, runs interleaved, pooled from the server logs (voice turns):
+
+| Chat model | Turns | TTFA p50 | TTFA p95 | First token p50 |
+| --- | --- | --- | --- | --- |
+| `qwen/qwen3.8-27b` (before) | 15 | 1,077 ms | 1,349 ms | 324 ms |
+| `openai/gpt-oss-120b`, low reasoning | 14 | 1,099 ms | 1,757 ms | 427 ms |
+| `openai/gpt-oss-120b`, medium reasoning (now) | 19 | 1,290 ms | 1,662 ms | 589 ms |
+
+Whole replies cost about 210 ms at p50 and 310 ms at p95, almost all of it the model's first token. Dropping the clause break cost little: the first segment was ready a median 31 ms after the first token (up to 115 ms), against 19 ms (up to 33 ms) before. A 30-turn spoken session on medium had TTFA p50 1,262 ms and p95 2,665 ms (one retried turn took 3,776 ms). No complete reply ended mid-sentence, and the repair fired once (`gave_up`).
 
 ## Fallbacks and limits
 
