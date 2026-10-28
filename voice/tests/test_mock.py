@@ -14,6 +14,7 @@ from app.mock import (
     Target,
     interviewer_name,
     interviewer_title,
+    plain_company,
     resolve_target,
     same_company,
     step_out_reason,
@@ -101,6 +102,15 @@ def test_targets_come_from_the_pipeline_first():
     assert resolve_target("Acme", (SPROUT,), ("analyst",)) == Target("Acme", "analyst")
     assert resolve_target(None, (), ("BDR",)) == Target(None, "BDR")
     assert resolve_target("Tessellate", (TESS,), ("BDR",)).role == "BDR"  # the entry has no role
+
+
+@pytest.mark.parametrize("raw, plain", [
+    ("Acme (Series B)", "Acme"), (" Sprout Social. ", "Sprout Social"), ("()", None), ('"Sprout"', "Sprout"),
+    ("Acme [Series B", "Acme"),  # "[mock: Acme [Series B]]" ends at the first "]", so the cue holds this
+    ("Sprout Social", "Sprout Social"), ("", None), (None, None),
+])
+def test_a_cue_names_the_company_plainly(raw, plain):
+    assert plain_company(raw) == plain
 
 
 def test_with_no_company_the_soonest_entry_wins_whatever_the_order():

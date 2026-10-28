@@ -82,3 +82,14 @@ def test_unfeed_takes_back_text_not_yet_spoken():
     assert seg.feed("You're ready.Whenev") == []
     seg.unfeed(6)
     assert seg.flush() == ["You're ready."]
+
+
+def test_bracketed_asides_are_never_spoken():
+    assert clean("[laughs] Let's go.") == "Let's go."
+    assert clean("Sure. [cut off here. They didn't hear the rest]") == "Sure."
+
+
+def test_a_bracket_split_across_segments_is_dropped_from_both():
+    # The streaming segmenter splits a bracket that spans sentences before clean() sees it.
+    seg = Segmenter()
+    assert seg.feed("Sure. [cut off here. They didn't hear the rest] Next. ") + seg.flush() == ["Sure.", "Next."]

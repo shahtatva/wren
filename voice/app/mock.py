@@ -139,6 +139,18 @@ def same_company(a: str | None, b: str | None) -> bool:
     return bool(a and b) and (f" {a} " in f" {b} " or f" {b} " in f" {a} ")
 
 
+# A "(...)" or "[...]" part of a name, or one left open to the end: a cue's company can't hold a "]".
+_ASIDE = re.compile(r"\([^)]*\)?|\[[^\]]*\]?")
+_NAME_ENDS = ".,;:!?\"'- "
+
+
+def plain_company(text: str | None) -> str | None:
+    """The company a [mock: ...] cue names, said plainly: "Acme (Series B)" is "Acme". The introduction
+    speaks a company that isn't in the pipeline as the cue names it, and scripted lines aren't cleaned."""
+    plain = " ".join(_ASIDE.sub(" ", text or "").split()).strip(_NAME_ENDS)
+    return plain or None
+
+
 def _soonest(entry: PipelineEntry) -> tuple[date, time]:
     return entry.next_date or date.max, entry.next_time or time.max
 

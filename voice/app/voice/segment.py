@@ -4,7 +4,7 @@ Each segment goes to text-to-speech on its own, so audio can start before the re
 finished. Segments end at sentence ends, never at a comma: each segment is a separate
 recording, so a split sentence changes voice halfway. A run-on with no punctuation is
 cut at a word cap. The persona card already asks for plain spoken text; clean() is the
-safety net for the markdown, emoji and links models slip in anyway.
+safety net for the markdown, emoji, links and bracketed notes models slip in anyway.
 """
 
 import re
@@ -16,6 +16,12 @@ _SENTENCE_END = re.compile(r"[.!?]+[\"'\u201d\u2019)\]]*(?=\s)")
 _COMPLETE_WORD = re.compile(r"\S+(?=\s)")
 _LAST_WORD = re.compile(r"(\S+)$")
 
+# Bracketed text is never spoken: a stray cue, a role mark, a cut-off marker, "[laughs]". The segmenter
+# splits a bracket that spans sentences before clean() sees it, so a "[" left open at the end of a
+# segment, or a "]" never opened in it, drops that half too.
+_ASIDE = re.compile(r"\[[^\]]*\]")
+_OPEN_ASIDE = re.compile(r"\[[^\]]*$")
+_CLOSE_ASIDE = re.compile(r"^[^\[]*\]")
 _URL = re.compile(r"(?:https?://|www\.)\S+")
 _KEYCAP = re.compile("\\d\ufe0f?\u20e3")
 _EMOJI = re.compile(
@@ -33,6 +39,9 @@ _REPEATED_COMMA = re.compile(r",(?:\s*,)+")
 def clean(text: str) -> str:
     lines = [_LINE_MARKER.sub("", line) for line in text.splitlines()]
     text = " ".join(lines)
+    text = _ASIDE.sub("", text)
+    text = _OPEN_ASIDE.sub("", text)
+    text = _CLOSE_ASIDE.sub("", text)
     text = _URL.sub("", text)
     text = _KEYCAP.sub("", text)
     text = _EMOJI.sub("", text)
