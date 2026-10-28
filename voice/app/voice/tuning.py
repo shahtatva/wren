@@ -15,6 +15,7 @@ class Tuning:
     session_cap_s: float = 2700.0  # 45 minutes
     hello_timeout_s: float = 5.0
     keepalive_s: float = 4.0  # Deepgram closes after 10 s with neither audio nor KeepAlive
+    stt_send_timeout_s: float = 2.0  # a send to Deepgram that takes longer has stalled: drop the connection
     history_turns: int = 6
     memories_k: int = 8
     retrieval_timeout_s: float = 1.5  # the most a turn waits for memories before answering without them

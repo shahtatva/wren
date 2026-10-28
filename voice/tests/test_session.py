@@ -429,6 +429,43 @@ def test_stt_failure_switches_to_text_and_text_still_works():
         assert segment["text"] == "Text still works."
 
 
+STALLED = {"type": "voice", "available": False, "reason": "stt_stalled"}
+
+
+def test_a_stalled_deepgram_send_drops_hearing_and_keeps_the_session_going():
+    stalled, fresh = FakeStt(hang={"send"}), FakeStt()
+    connections = [stalled, fresh]
+
+    async def connect():
+        return connections.pop(0)
+
+    chat = FakeChat([OPENING, ["Text still works."]])
+    rt = make_runtime(chat, stt_factory=connect, tuning=replace(FAST, stt_send_timeout_s=0.2))
+    with voice_session(rt) as (ws, wire, _):
+        play(ws, wire, turn=1)
+        ws.send_bytes(b"\x00" * 640)
+        lost, _ = wire.until("voice", timeout=2)
+        assert lost == STALLED and stalled.closed
+        ws.send_json({"type": "user_text", "text": "hello"})
+        _, seen = wire.until("reply_end", turn=2, outcome="complete")
+        back = {"type": "voice", "available": True}
+        if back not in seen:
+            wire.until("voice", available=True, timeout=3)  # the usual retry, after a second
+
+
+def test_a_stalled_keepalive_doesnt_freeze_the_ticker():
+    stt = FakeStt(hang={"keep_alive"})
+    chat = FakeChat([OPENING, ["Still here."]])
+    rt = make_runtime(chat, stt=stt, tuning=replace(FAST, keepalive_s=0.1, stt_send_timeout_s=0.2))
+    with voice_session(rt) as (ws, wire, _):
+        lost, _ = wire.until("voice", timeout=2)  # no audio arrives, so the ticker sends a KeepAlive
+        assert lost == STALLED
+        ws.send_json({"type": "user_text", "text": "hello"})
+        wire.until("reply_end", turn=2, outcome="complete")
+        # Nobody reports playback, so only the ticker can finish the turn.
+        wire.until("metrics", turn=2, outcome="complete", timeout=3)
+
+
 def test_tts_failure_still_delivers_the_text():
     chat = FakeChat([["Hey there."]])
     with voice_session(make_runtime(chat, stt=FakeStt(), tts=FakeTts(error=RuntimeError("aura down")))) as (ws, wire, _):

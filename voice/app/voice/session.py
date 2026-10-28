@@ -290,16 +290,32 @@ class VoiceSession:
             self._spawn(stt.close())
             await self._send({"type": "voice", "available": False, "reason": reason})
 
+    async def _to_stt(self, stt: Stt, send) -> bool:
+        """Awaits one send to Deepgram, with a deadline. False if it didn't go through.
+
+        A send that stalls would freeze whichever loop awaits it (the socket reader or the
+        ticker), so after `stt_send_timeout_s` speech-to-text is dropped like a broken connection.
+        """
+        try:
+            await asyncio.wait_for(send, self.rt.tuning.stt_send_timeout_s)
+            return True
+        except TimeoutError:
+            logger.warning("a send to speech-to-text stalled (%s); dropping the connection", send.__qualname__)
+            if self.stt is stt and not self._closing:
+                await self._close_stt("stt_stalled")
+                self._schedule_stt_retry()
+            return False
+        except Exception:
+            return False  # the reader notices the closed stream
+
     async def _on_audio(self, pcm: bytes) -> None:
         if not self.mic_on or self.stt is None:
             return
         now = clock.now()
         self.timeline.add(len(pcm), now)
         self._last_audio = now
-        try:
-            await self.stt.send(pcm)
-        except Exception:
-            return  # the reader notices the closed stream
+        if not await self._to_stt(self.stt, self.stt.send(pcm)):
+            return
         heard = self.vad.push(pcm)
         if heard == "start":
             self._last_speech = now
@@ -310,10 +326,8 @@ class VoiceSession:
             if self.state == "thinking" and self.reply is not None and self.reply.user_text is not None:
                 await self._continue(self.reply)
         elif heard == "end":
-            try:
-                await self.stt.finalize()
-            except Exception:
-                pass
+            if (stt := self.stt) is not None:
+                await self._to_stt(stt, stt.finalize())
             if self._prefix and not self.endpoint.has_words():
                 self._prefix_deadline = now + PREFIX_GRACE_S
 
@@ -583,10 +597,7 @@ class VoiceSession:
                 await self._close_stt("idle")
             elif now - self._last_audio >= tuning.keepalive_s and now - self._last_keepalive >= tuning.keepalive_s:
                 self._last_keepalive = now
-                try:
-                    await self.stt.keep_alive()
-                except Exception:
-                    pass
+                await self._to_stt(self.stt, self.stt.keep_alive())
         if now - self._started >= tuning.session_cap_s:
             await self._send({"type": "error", "code": "session_over", "message": SESSION_OVER})
             await self.ws.close(code=SESSION_OVER_CLOSE)

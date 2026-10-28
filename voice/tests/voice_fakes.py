@@ -33,18 +33,26 @@ SEGMENT_BYTES = 4800  # one fake TTS chunk: 2400 samples, 100 ms at 24 kHz
 
 
 class FakeStt:
-    def __init__(self, fail=None):
-        self.fail, self.sent_bytes, self.finalized, self.keepalives, self.closed = fail, 0, 0, 0, False
+    def __init__(self, fail=None, hang: set[str] = frozenset()):
+        """`hang` names methods ("send", "keep_alive", "finalize") that wait forever, like a stalled socket."""
+        self.fail, self.hang, self.sent_bytes, self.finalized, self.keepalives, self.closed = fail, hang, 0, 0, 0, False
         self._loop = self._queue = None
         self._ready = threading.Event()
 
+    async def _maybe_hang(self, method: str):
+        if method in self.hang:
+            await asyncio.Event().wait()
+
     async def send(self, pcm):
+        await self._maybe_hang("send")
         self.sent_bytes += len(pcm)
 
     async def keep_alive(self):
+        await self._maybe_hang("keep_alive")
         self.keepalives += 1
 
     async def finalize(self):
+        await self._maybe_hang("finalize")
         self.finalized += 1
 
     async def events(self):
