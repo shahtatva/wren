@@ -186,15 +186,18 @@ def test_everyday_words_in_an_answer_dont_step_out(text):
     ("Could you step out of the role for a moment? I want to ask about the pay range for this job.", "pause"),
     ("Can we step out of the interview? I have a question about my resume and how it reads.", "pause"),
     ("Can you step out of role for a second?", "pause"),
-    # a message that opens by addressing Wren
+    # a message that opens by addressing Wren, with or without an opener first
     ("Hey Wren, can you hear me?", "pause"), ("Wren?", "pause"),
     ("Okay, Wren. Quick question about my resume.", "pause"),
+    ("Wait, Wren, can I ask you something?", "pause"), ("Hold on, Wren, quick question.", "pause"),
+    ("Actually, Wren, one more thing.", "pause"), ("Oh Wren, quick question.", "pause"),
     # the order is crisis, ai, stop, pause
     ("Wren, are you a bot?", "ai"), ("Wren, can we stop the interview?", "stop"),
     ("Wren, I want to kill myself.", "crisis"), ("Can we step out? Are you a person or a bot?", "ai"),
     # other ways to stop
     ("Let's end the mock interview.", "stop"), ("I want to stop.", "stop"), ("That's enough for today.", "stop"),
-    ("I'm done.", "stop"), ("I'm done here.", "stop"),
+    ("That's enough.", "stop"), ("Can we end the interview here?", "stop"), ("Stop the interview please.", "stop"),
+    ("Can we stop the mock for today?", "stop"),
     ("Please end the interview now, I'm too tired to keep going with this.", "stop"),
     ("Let's stop this.", "stop"), ("Let's stop right here.", "stop"), ("Can we call it a day?", "stop"),
     ("I need to stop for today.", "stop"), ("Let's end it here.", "stop"), ("Can we stop the practice?", "stop"),
@@ -205,10 +208,15 @@ def test_everyday_words_in_an_answer_dont_step_out(text):
     ("Let\u2019s stop there.", "stop"), ("I don\u2019t want to be alive.", "crisis"),
     # other ways to ask whether it's an AI
     ("Are you a real person or a bot?", "ai"), ("Am I talking to a real person?", "ai"), ("Is this an AI?", "ai"),
-    ("You're a bot, aren't you?", "ai"),
+    ("You're a bot, aren't you?", "ai"), ("Is this a person?", "ai"), ("Is this a human?", "ai"),
+    ("Is it a person or a bot?", "ai"), ("You're just a bot, aren't you?", "ai"), ("You're actually an AI?", "ai"),
+    ("You're just an AI.", "ai"),
     # other ways to say it's a crisis
     ("I don't want to live anymore.", "crisis"), ("I'm thinking about suicide.", "crisis"),
     ("I want to hurt myself.", "crisis"), ("I'm not safe right now.", "crisis"), ("I wish I were dead.", "crisis"),
+    ("I don't feel safe.", "crisis"), ("I don't feel safe at home.", "crisis"), ("I feel like dying.", "crisis"),
+    ("Everyone would be better off without me.", "crisis"), ("I don't feel safe right now.", "crisis"),
+    ("I do not feel safe here.", "crisis"), ("They'd be better off without me", "crisis"),
 ])
 def test_more_words_that_bring_wren_back(text, reason):
     assert step_out_reason(text) == reason
@@ -231,6 +239,25 @@ def test_distress_is_never_taken_for_a_request_to_stop():
     "Are you real busy right now?", "Let's stop and think about it first.",
     "I always end the session by recapping the next steps with the client.",
     "It wasn't a hill I wanted to die on, so I let the client choose the format.",
+    # "step out of" something that isn't the role, mock or interview, even in a long answer
+    "At a startup you sometimes have to step out of your role and help wherever the team needs it.",
+    "I'm ready to step out of this role and into a team lead position next year.",
+    # "stop" or "end" with an object that only starts with the interview, practice or session
+    "I'd like to end the interview by asking what success looks like in the first ninety days.",
+    "In my first month I want to end the practice of copying data by hand into the CRM.",
+    "You can stop the session at any time, no questions asked.",
+    "As a recruiter I need to end the interview process faster.",
+    "My rule is simple. End the session with a clear next step for the client.",
+    # "that's enough" and "I'm done" are also how people close an answer
+    "That's enough about me.", "Okay, I think that's enough detail.", "I'm done.", "I'm done here.",
+    # loose stop phrases with a proper ending still count only in a short message
+    "When the numbers stopped adding up I told the team let's stop here and rerun everything.",
+    "I told my manager that's enough, and I asked for a project with clearer goals.",
+    # words about people and safety in a job question or a job story
+    "Is this a human resources role?", "Is this an in-person role?",
+    "I don't feel safe speaking up in meetings without data to back me",
+    "the team was better off without me micromanaging every ticket",
+    "I felt like dying when the demo crashed in front of the client",
 ])
 def test_more_everyday_words_in_an_answer_dont_step_out(text):
     assert step_out_reason(text) is None

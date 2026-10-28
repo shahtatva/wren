@@ -173,8 +173,11 @@ def interviewer_name(session_id: str, mock_id: int) -> str:
 _SHORT = 8  # words. Loose phrases count only in a message this short.
 _APOSTROPHES = str.maketrans("\u2018\u2019", "''")
 
-# Suicide, self-harm or danger. Idioms ("the deadline was killing me", "a hill I want to die on",
-# "in danger of missing it") and "don't want to live in New York" are not it.
+# Suicide, self-harm or danger. Idioms and job stories are not it: "the deadline was killing me", "a hill
+# I want to die on", "in danger of missing it", "I felt like dying when the demo crashed", "better off
+# without me micromanaging", "I don't feel safe speaking up", "I don't want to live in New York". "I
+# don't want to be here anymore" and "I can't go on" are left to the interviewer: they are also real
+# answers to "why are you leaving?"
 _CRISIS = re.compile(
     r"\bsuicid(?:e|al)|\bself[\s-]?harm"
     r"|\b(?:kill|killing|hurt|hurting|harm|harming|cut|cutting)\s+my\s?self\b"
@@ -183,7 +186,9 @@ _CRISIS = re.compile(
     r"|\bbetter\s+off\s+dead\b|\bno\s+reason\s+to\s+live\b"
     r"|\b(?:don't|do\s+not|no\s+longer)\s+(?:want|wanna)\s+to\s+"
     r"(?:be\s+alive|exist|live(?=\s*(?:[.!?,]|$|any\s*(?:more|longer))))"
-    r"|\b(?:i'm|i\s+am|i\s+feel)\s+(?:not\s+safe|unsafe|in\s+(?:real\s+|serious\s+)?danger\b(?!\s+of\b))",
+    r"|\b(?:i'm|i\s+am|i\s+feel)\s+(?:not\s+safe|unsafe|in\s+(?:real\s+|serious\s+)?danger\b(?!\s+of\b))"
+    r"|\bi\s+(?:don't|do\s+not)\s+feel\s+safe(?=\s*(?:[.!?,]|$|(?:right\s+)?now\b|at\s+home\b|here\b))"
+    r"|\bfeel\s+like\s+dying\b|\bbetter\s+off\s+without\s+me(?=\s*(?:[.!?,]|$))",
     re.IGNORECASE,
 )
 
@@ -197,25 +202,30 @@ _MACHINE = rf"(?:ai|a\.i\.|bots?|chat\s?bots?|robots?|machine|computer|llm|chat\
 _AI = re.compile(
     rf"\bare\s+you\s+(?:even\s+|actually\s+|really\s+|just\s+)?(?:an?\s+)?(?:{_HUMAN}|{_MACHINE})"
     rf"|\bam\s+i\s+(?:talking|speaking|chatting)\s+(?:to|with)\s+(?:an?\s+)?(?:{_HUMAN}|{_MACHINE})"
-    rf"|\bis\s+(?:this|that|it)\s+(?:an?\s+)?(?:{_REAL_ONE}|{_MACHINE})"
-    rf"|\byou(?:'re|\s+are)\s+(?:an?\s+)?(?:actually\s+|really\s+|just\s+)?{_MACHINE}",
+    rf"|\bis\s+(?:this|that|it)\s+(?:an?\s+)?(?:{_HUMAN}|{_MACHINE})"
+    rf"|\byou(?:'re|\s+are)\s+(?:actually\s+|really\s+|just\s+)?(?:an?\s+)?{_MACHINE}",
     re.IGNORECASE,
 )
 
 # Asking to end it, in any message, because the request names the mock, interview, practice or session.
-# The verb has to open a sentence or follow a request, so "I always end the interview by thanking them"
-# stays an answer. "finish" is left out: "let's finish the interview" means keep going.
+# The verb has to open a sentence or follow a request, and the clause has to end with the object (or go
+# on with "now", "here", "please", "for today"). So "I always end the interview by thanking them", "I
+# need to end the interview process faster" and "End the session with a clear next step" stay answers.
+# "finish" is left out: "let's finish the interview" means keep going.
 _STOP = re.compile(
     r"(?:^|[.!?,;]\s+|\b(?:please|let'?s|(?:can|could)\s+(?:we|you)|(?:we|you)\s+can|we\s+should|"
     r"i\s+want\s+to|i'd\s+like\s+to|i\s+need\s+to)\s+)"
     r"(?:(?:okay|ok|so|just)\W+)*"
-    r"(?:stop|end|quit|cancel)\s+(?:(?:the|this|our)\s+)?(?:mock|interview|practice|session|role[\s-]?play)\b",
+    r"(?:stop|end|quit|cancel)\s+(?:(?:the|this|our)\s+)?"
+    r"(?:mock(?:\s+interview)?|interview|practice|session|role[\s-]?play)"
+    r"(?=\s*(?:[.!?,;]|$)|\s+(?:now|here|there|please|for\s+(?:today|now|the\s+day))\b)",
     re.IGNORECASE,
 )
 # Looser ways to say it, which are also things people say in answers, so they count only in a short
 # message. The verb has to end the clause or be followed by a stop-like word: "I want to stop." and
 # "Let's stop there." are requests, "I want to stop feeling like this." isn't, and "I want to end it
-# all." is a crisis. "I'm done" has to end the message: "I'm done with my degree in May" is an answer.
+# all." is a crisis. "That's enough." stops, "That's enough about me." doesn't. "I'm done" isn't here:
+# a candidate says it to close an answer.
 _STOP_ENDS = (
     r"(?=\s*(?:[.!?,]|$)"
     r"|\s+(?:(?:it\s+)?(?:right\s+)?(?:here|there|now)|this|for\s+(?:today|now|the\s+day))\b)"
@@ -224,19 +234,19 @@ _LOOSE_STOP = re.compile(
     rf"\b(?:let'?s|let\s+us|can\s+we|could\s+we)\s+(?:just\s+)?"
     rf"(?:stop|end|quit|wrap\s+(?:this\s+|it\s+)?up|call\s+it(?:\s+a\s+day)?){_STOP_ENDS}"
     rf"|\b(?:i\s+want\s+to|i'd\s+like\s+to|i\s+need\s+to|i\s+wanna)\s+(?:just\s+)?(?:stop|quit){_STOP_ENDS}"
-    r"|\bthat'?s\s+enough\b"
-    r"|\bi(?:'?m|\s+am)\s+done(?:\s+(?:here|now|for\s+(?:today|now)))?\W*$",
+    rf"|\bthat'?s\s+enough{_STOP_ENDS}",
     re.IGNORECASE,
 )
 
-# "Step out" is a request in a short message, or when it names the role, mock or interview. Longer,
-# it is an answer: "I had to step out of my comfort zone to lead that project".
+# "Step out" is a request in a short message, or in any message when it names the role, mock or
+# interview. Longer, it is an answer: "I had to step out of my comfort zone to lead that project", "you
+# sometimes have to step out of your role and help".
 _STEP_OUT = re.compile(r"\bstep\s+out\b", re.IGNORECASE)
-_STEP_OUT_OF_ROLE = re.compile(
-    r"\bstep\s+out\s+of\s+(?:the\s+|this\s+|your\s+)?(?:role|mock|interview)\b", re.IGNORECASE
+_STEP_OUT_OF_ROLE = re.compile(r"\bstep\s+out\s+of\s+(?:the\s+)?(?:role|mock|interview)\b", re.IGNORECASE)
+# A message that opens by speaking to Wren, after an opener or not: "Wren, can I ask you something?"
+_ADDRESSES_WREN = re.compile(
+    r"^\W*(?:(?:hey|hi|hello|okay|ok|um|uh|so|sorry|wait|hold\s+on|actually|oh)\W+)*wren\b", re.IGNORECASE
 )
-# A message that opens by speaking to Wren: "Wren, can I ask you something?"
-_ADDRESSES_WREN = re.compile(r"^\W*(?:(?:hey|hi|hello|okay|ok|um|uh|so|sorry)\W+)*wren\b", re.IGNORECASE)
 
 
 def step_out_reason(text: str) -> StepOutReason | None:
