@@ -60,6 +60,16 @@ def test_bad_dev_user_id_names_the_variable(voice_env):
         config.load_voice_settings()
 
 
+def test_an_empty_dev_user_id_beats_the_env_file(voice_env, tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("WREN_DEV_USER_ID=6f1c2c1e-3d1a-4a52-9a43-0b7f2a1f9e10\n")
+    voice_env.setattr(config, "ENV_FILE", env_file)
+    voice_env.setenv("WREN_DEV_USER_ID", "")  # what the image's start command does
+    assert config.load_voice_settings().dev_user_id is None
+    voice_env.delenv("WREN_DEV_USER_ID")  # unset instead: the file brings the dev identity back
+    assert config.load_voice_settings().dev_user_id == UUID("6f1c2c1e-3d1a-4a52-9a43-0b7f2a1f9e10")
+
+
 def test_hold_is_longer_in_mocks():
     tuning = Tuning()
     assert tuning.hold_s("checkin") == 0.0

@@ -29,5 +29,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \
 # One process: live conversations sit in its memory, so don't add workers or replicas.
 # Hosts set PORT. WREN_DEV_USER_ID is cleared because it's for local development only: a
 # proxy inside the host could make every caller look like loopback (see the voice-loop
-# design, "Keys and access").
-CMD ["sh", "-c", "unset WREN_DEV_USER_ID; exec uvicorn app.main:app --host 0.0.0.0 --port \"${PORT:-8000}\""]
+# design, "Keys and access"). It's set to empty, not unset: load_dotenv fills a variable
+# that's unset, so a .env that ever reached the image would bring the dev identity back,
+# but it never overwrites one that's set, and an empty one means no dev identity.
+CMD ["sh", "-c", "export WREN_DEV_USER_ID=; exec uvicorn app.main:app --host 0.0.0.0 --port \"${PORT:-8000}\""]

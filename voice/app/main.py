@@ -15,7 +15,7 @@ if not _app_log.handlers:
     _app_log.addHandler(_handler)
     _app_log.setLevel(logging.INFO)
 
-app = FastAPI(title="Wren voice")
+app = FastAPI(title="Wren voice", docs_url=None, redoc_url=None, openapi_url=None)  # no public map of the API
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(allowed_origins()),
