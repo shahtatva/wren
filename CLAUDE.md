@@ -101,6 +101,7 @@ Voice server (FastAPI, run from `voice/`):
 - Time-to-first-audio report from `voice/logs/turns.jsonl`: `python -m app.tools.ttfa_report`
 - Check that no key reached the browser, after `npm run build`: `python -m app.tools.leak_check`
 - Audition Wren's voice: `python -m app.tools.voices`
+- Hear Wren's replies to scripted turns, after any change to a prompt that makes Wren speak: `python -m app.tools.samples --group checkin --runs 3`. It uses the real chat model and Groq's free tier, and flags replies that are long, ask two questions, or read badly aloud.
 
 Evals (run from the repo root, with `voice/.venv` active):
 

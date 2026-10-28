@@ -1,10 +1,16 @@
+import asyncio
 import json
 
 import pytest
 
+from app.conversation import Conversation
 from app.tools.bench import frames_of, room_noise
+from app.tools.samples import RAMBLE, SCENARIOS, SampleReply, Scenario, check, run_scenario
+from app.tools.samples import summarize as summarize_replies
 from app.tools.ttfa_report import load_records, percentile, summarize
+from app.voice.tuning import Tuning
 from app.voice.vad import rms
+from tests.voice_fakes import USER, FakeChat
 
 
 def test_percentile_is_nearest_rank():
@@ -119,3 +125,77 @@ def test_leak_check_main_says_how_much_it_scanned(tmp_path, monkeypatch, capsys)
     assert leak_check.main() == 0
     out = capsys.readouterr().out
     assert "scanned 1 file in" in out and str(tmp_path) in out  # a scan of nothing would pass every key
+
+
+def test_check_flags_what_reads_badly_aloud():
+    assert set(check("Great question! You did 3 things. Want to try? Or not?")) >= {"filler", "digits", "two questions"}
+    assert check("Lead with the result. Want to try it again?") == []
+    assert "long" in check("One. Two. Three. Four.")
+    assert "long" not in check("One. Two. Three. Four. Five. Six.", debrief=True)
+    assert "question not last" in check("Ready? Let's go.")
+    assert "clinical" in check("That sounds like anxiety.")
+    assert "praise in role" in check("Great answer. Why Sprout?", in_role=True)
+    assert "praise in role" not in check("Great answer. Why Sprout?")
+
+
+def test_check_flags_brackets_and_three_sentences_that_run_long():
+    assert "brackets" in check("Sure. [mock: Sprout]")
+    assert "brackets" in check("Try the STAR shape (situation first). Ready?")
+    three_long = " ".join([" ".join(["word"] * 16) + "."] * 3)  # three sentences, forty-eight words
+    assert "long" in check(three_long)
+    assert "long" not in check(three_long, debrief=True)
+    assert "long" not in check(" ".join([" ".join(["word"] * 14) + "."] * 3))  # forty-two words
+
+
+def test_a_scenario_runs_through_run_turn():
+    scenario = Scenario("hi", "checkin", lambda: Conversation("s", USER, "checkin", "UTC"), ("Hi there.",))
+    replies = asyncio.run(run_scenario(scenario, FakeChat([["Hey. ", "How's the search going?"]]), Tuning()))
+    assert [(r.text, r.words, r.flags) for r in replies] == [("Hey. How's the search going?", 5, [])]
+    assert summarize_replies(replies)["median_words"] == 5
+
+
+def test_summarize_reports_length_and_what_was_flagged():
+    def reply(text):
+        return SampleReply("s", None, text, len(text.split()), check(text))
+
+    replies = [reply("Hey. How's the search going?"), reply("Want to try? Or not?"), reply("You did 3 things.")]
+    summary = summarize_replies(replies)
+    assert summary == {"replies": 3, "median_words": 5, "max_words": 5, "two_questions": 1, "flagged": 2}
+
+
+def test_the_checkin_scenarios_set_one_scene_and_keep_the_conversation():
+    by_name = {s.name: s for s in SCENARIOS if s.group == "checkin"}
+    assert list(by_name) == ["opening", "nervous", "ramble", "memory", "person", "crisis"]
+    assert 100 <= len(RAMBLE.split()) <= 140  # about 120 words
+    chat = FakeChat([["Okay."], ["Okay."]])
+    asyncio.run(run_scenario(by_name["ramble"], chat, Tuning()))
+    system = chat.calls[0][0]["content"]
+    for scene in ("Maya", "MS in Information Management", "Sprout Social", "(tomorrow) at 11:00 AM", "2 days since your last session", "[story]"):
+        assert scene in system, scene
+    assert [m["content"] for m in chat.calls[1][-3:]] == [RAMBLE, "Okay.", "How was that?"]
+
+
+def test_the_memory_scenario_has_no_notes_and_the_opening_has_no_user_line():
+    by_name = {s.name: s for s in SCENARIOS if s.group == "checkin"}
+    chat = FakeChat([["I don't have that."]])
+    memory = asyncio.run(run_scenario(by_name["memory"], chat, Tuning()))
+    assert memory[0].line == "Do you remember what I told you about my old manager?"
+    assert "Nothing relevant yet." in chat.calls[0][0]["content"]
+    chat = FakeChat([["Hey Maya. Sprout's tomorrow. How are you feeling?"]])
+    opening = asyncio.run(run_scenario(by_name["opening"], chat, Tuning()))
+    assert opening[0].line is None and "session is just starting" in chat.calls[0][0]["content"]
+
+
+def test_a_pause_waits_between_turns_but_not_before_the_first(monkeypatch):
+    slept = []
+    real_sleep = asyncio.sleep
+
+    async def fake_sleep(seconds):
+        if seconds:
+            slept.append(seconds)
+        await real_sleep(0)
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    scenario = Scenario("two", "checkin", lambda: Conversation("s", USER, "checkin", "UTC"), ("One.", "Two."))
+    asyncio.run(run_scenario(scenario, FakeChat([["Hi."], ["Hi."]]), Tuning(), pause_s=6.0))
+    assert slept == [6.0]
