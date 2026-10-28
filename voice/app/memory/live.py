@@ -63,9 +63,18 @@ class NoMemory:
         return None
 
 
+def _mock_id(saved) -> int | None:
+    """The mock a saved turn belongs to. The transcript is jsonb, so anything but a whole
+    number is ignored, and that includes a bool, which isinstance() takes for an int."""
+    return saved if isinstance(saved, int) and not isinstance(saved, bool) else None
+
+
 def _history(transcript: list[dict]) -> list[HistoryTurn]:
     return [
-        HistoryTurn(t["id"], t["speaker"], t["text"], bool(t.get("interrupted")))
+        HistoryTurn(
+            t["id"], t["speaker"], t["text"], bool(t.get("interrupted")),
+            mock=_mock_id(t.get("mock")), in_role=t.get("as") == "interviewer",
+        )
         for t in transcript
         if t.get("speaker") in ("user", "wren")
     ]

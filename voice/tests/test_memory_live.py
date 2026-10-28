@@ -7,9 +7,9 @@ import psycopg
 import pytest
 
 from app.config import Settings
-from app.conversation import Background
+from app.conversation import Background, HistoryTurn
 from app.memory import store
-from app.memory.live import MemoryProvider, NoMemory, PostgresMemory
+from app.memory.live import MemoryProvider, NoMemory, PostgresMemory, _history
 
 USER = UUID("6f1c2c1e-3d1a-4a52-9a43-0b7f2a1f9e10")
 NOW = datetime(2026, 10, 16, 23, 0, tzinfo=timezone.utc)
@@ -33,6 +33,28 @@ def test_no_memory_retrieves_nothing_and_keeps_session_ids_unique():
     assert a[1] == Background() and a[2] == []
     assert resumed[0] == "keep-me"
     assert found.hits == [] and found.fallback == "memory off"
+
+
+def test_saved_turns_come_back_with_their_mock_and_role():
+    turns = _history([
+        {"id": "s:t01", "speaker": "wren", "text": "Why Sprout?", "mock": 1, "as": "interviewer"},
+        {"id": "s:t02", "speaker": "user", "text": "Because.", "mock": "x"},
+    ])
+    assert [(t.mock, t.in_role) for t in turns] == [(1, True), (None, False)]
+
+
+def test_saved_turns_from_before_mocks_come_back_as_they_were():
+    turns = _history([
+        {"id": "s:t01", "speaker": "user", "text": "hi"},
+        {"id": "s:t02", "speaker": "wren", "text": "Hey th", "interrupted": True},
+    ])
+    assert turns == [HistoryTurn("s:t01", "user", "hi"), HistoryTurn("s:t02", "wren", "Hey th", interrupted=True)]
+
+
+@pytest.mark.parametrize("saved", ["x", True, 1.5, None])
+def test_a_saved_mock_that_is_not_a_whole_number_is_ignored(saved):
+    (turn,) = _history([{"id": "s:t01", "speaker": "user", "text": "hi", "mock": saved}])
+    assert turn.mock is None
 
 
 class FakePostgres:
