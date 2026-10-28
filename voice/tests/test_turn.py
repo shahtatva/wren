@@ -176,6 +176,22 @@ def test_the_persona_card_holds_every_boundary():
         assert rule in content, rule
 
 
+def test_the_persona_card_keeps_replies_short_and_honest_about_memory():
+    content = build_messages(conversation(), "hi", [], NOW, Tuning())[0]["content"]
+    assert "under thirty words" in content
+    assert content.count("One question at most, as your last sentence.") == 1
+    assert "Ask at most one question" not in content  # conversation.md no longer repeats the card
+    assert "Don't explain how" in content and "say you don't have it" in content
+
+
+def test_the_persona_card_keeps_what_the_samples_needed():
+    # Each line came from `python -m app.tools.samples` (logs/session-7/mock-interviews-ledger.md).
+    content = build_messages(conversation(), "hi", [], NOW, Tuning())[0]["content"]
+    assert "each under fifteen words" in content  # without it the median reply ran 26 words
+    assert "Write numbers as words" in content  # without it the crisis reply said 9-1-1 and 9-8-8
+    assert "no question as a greeting" in content  # without it an opening asked two questions
+
+
 async def _no_memories(text):
     return Retrieved([], 0.0)
 
