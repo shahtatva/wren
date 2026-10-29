@@ -12,7 +12,6 @@ from app.mock import CLOSER, Mock, Target
 from app.turn import (
     INTERVIEW_RESUME,
     INTERVIEW_START,
-    PAUSED_AFTER_CRISIS,
     RETRY_LINE,
     build_interviewer_messages,
     claims_to_be_human,
@@ -464,10 +463,11 @@ def test_the_scripted_closer_is_saved_in_role_and_counts_as_a_question():
     assert "You've asked all your questions" in chat.messages[0][0]["content"]
 
 
-def test_the_interviewer_card_rules_out_praise_and_joined_questions():
+def test_the_interviewer_card_rules_out_praise_and_asks_one_question_a_turn():
     system = build_interviewer_messages(in_mock(2), "My answer.", Tuning())[0]["content"]
     assert '- No coaching, praise or feedback, not even "great" or "solid". That\'s for the debrief.' in system
-    assert '- Ask one question per turn, then stop and let them answer. Never join two questions with "and" or "or".' in system
+    # One question that joins two asks counts as one question.
+    assert "- Ask one question per turn, then stop and let them answer. A short follow-up counts as your question.\n" in system
 
 
 def test_the_interviewer_card_fills_in_what_isnt_known():
@@ -584,7 +584,7 @@ def test_the_interviewers_closing_cue_leads_into_the_debrief():
     assert out[:3] == ["Thanks, that's everything I had.", "Stepping out.", "It's me again."]
     assert out[0].mock == 1 and out[1].mock is None and timing.switch == "step_out:done"
     assert "Debrief it now" in chat.messages[1][0]["content"] and "Dana: Thanks, that's everything I had." in chat.messages[1][0]["content"]
-    assert "six at most, even if their last words asked about the job." in chat.messages[1][0]["content"]
+    assert "six at most, even if their last words were a question for the interviewer." in chat.messages[1][0]["content"]
 
 
 def test_a_step_out_cue_mid_interview_holds_the_debrief():
@@ -627,7 +627,7 @@ def test_wren_keeps_the_last_mock_in_view_for_a_few_turns():
     messages = build_messages(convo, "What about my second answer?", [], NOW, Tuning())
     assert "Candidate: answer 1" in messages[0]["content"] and "If they ask about it, use this" in messages[0]["content"]
     assert messages[0]["content"].rstrip().endswith(
-        "If they want to go on with it and no boundary rules it out, write only [mock: company]."
+        "If they want to go on with it, write only [mock: company]."
     )
     assert not any("Question 2?" in m["content"] for m in messages[1:])  # the mock's lines appear once, in the block
     for i in range(6):
@@ -730,24 +730,16 @@ def test_a_pickup_that_fails_twice_asks_its_last_question_again(mock_lines, line
     assert convo.mock.on and convo.mock.last_step_out is None
 
 
-def test_after_a_crisis_wren_sees_only_that_the_mock_is_paused_and_can_pick_it_back_up():
+def test_after_a_crisis_the_mock_leaves_wrens_prompt():
     convo = in_mock(2)
     _, chat, _, _ = step_out_turn(convo, "I keep thinking about killing myself.", ["I'm really glad you told me."])
-    assert "is paused" not in chat.messages[0][0]["content"]  # the turn that stepped out shows the mock, with CRISIS
+    assert "Don't debrief" in chat.messages[0][0]["content"]  # the turn that stepped out shows it, with CRISIS
     convo.add("user", "I keep thinking about killing myself.", mock=1)
     convo.add("wren", "Stepping out. It's me again. I'm really glad you told me.")
     messages = build_messages(convo, "Thanks. I'm safe now.", [], NOW, Tuning())
-    system = messages[0]["content"]
-    assert system.rstrip().endswith("\nThe mock interview\n" + PAUSED_AFTER_CRISIS.format(name="Dana"))
-    assert "Word for word" not in system and "If they ask about it" not in system  # no transcript, no feedback
+    assert "The mock interview" not in messages[0]["content"]
     history = "\n".join(m["content"] for m in messages[1:])
     assert "I keep thinking about killing myself." in history and "[As the interviewer] Question 2?" in history
-    chat, timing = ScriptedChat(["[mock]"], ["Why Sprout?"]), TurnTiming(9, "checkin", "voice")
-    later = run_turn(convo, "I'm safe now. Can we keep going?", retrieve=_no_memories, chat=chat, timing=timing)
-    out = asyncio.run(_collect(later))
-    assert out[0] == "Okay, stepping back into role." and timing.switch == "mock_resume"
-    assert (convo.mock.id, convo.mock.on, convo.mock.last_step_out) == (1, True, None)
-    assert "is paused" not in build_messages(convo, "hi", [], NOW, Tuning())[0]["content"]
 
 
 def test_a_reply_after_any_step_out_gets_the_step_out_token_budget():
