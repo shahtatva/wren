@@ -18,7 +18,7 @@ line that hands over the floor. A reply that changes speaker saves as one turn p
 speaker, and the user's words belong to the mock if the interviewer had the floor. A
 switch counts only if the user heard at least part of its line: a reply cut before it,
 or dropped because the user kept talking, gives the floor back and tells the page. A
-reply only ever undoes its own switch, and only while that mock still has the floor.
+reply only ever undoes its own switch, and only if no other turn has built on it.
 Stepping out for a crisis always stands, heard or not: boundaries break role at once.
 
 Every voice turn logs three timestamps: the end of the user's speech, the first LLM
@@ -83,6 +83,7 @@ class Reply:
     timing: TurnTiming
     mock_before: Mock | None  # the conversation's mock as the turn starts, read again under the lock
     switched_to: Mock | None = None  # the mock this reply's own switch line put on the floor
+    turns_at_switch: int | None = None  # the conversation's saved turns at that switch
     segments: list[Segment] = field(default_factory=list)
     task: asyncio.Task | None = None
     llm_done: bool = False
@@ -413,7 +414,7 @@ class VoiceSession:
                     timing=reply.timing, tuning=self.rt.tuning,
                 ):
                     if spoken.switch:  # run_turn handed over the floor in this same step: this is its mock
-                        reply.switched_to = self.convo.mock
+                        reply.switched_to, reply.turns_at_switch = self.convo.mock, len(self.convo.turns)
                         await self._send(mock_message(reply.switched_to))
                     seg = Segment(len(reply.segments), spoken, mock=spoken.mock, switch=spoken.switch)
                     reply.segments.append(seg)
@@ -493,12 +494,13 @@ class VoiceSession:
         else:
             heard = reply.heard(clock.now())
         # A switch counts only if the user heard at least part of its line. A reply undoes only its own
-        # switch, and only while that mock still has the floor: a POST /turn on this session may have
-        # moved it since. Stepping out for a crisis stands even unheard: boundaries break role at once.
+        # switch, and only while nothing has built on it: that mock still has the floor, and no turn has been
+        # saved since. This reply's own turns are saved below, so any other came from a POST /turn on this
+        # session. Stepping out for a crisis stands even unheard: boundaries break role at once.
         switched = reply.switched_to
         undone = (
-            switched is not None and self.convo.mock is switched and switched.last_step_out != "crisis"
-            and not any(seg.switch for seg, _ in heard)
+            switched is not None and self.convo.mock is switched and len(self.convo.turns) == reply.turns_at_switch
+            and switched.last_step_out != "crisis" and not any(seg.switch for seg, _ in heard)
         )
         if undone:
             self.convo.mock = reply.mock_before

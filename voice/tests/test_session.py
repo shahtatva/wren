@@ -861,3 +861,37 @@ def test_a_turn_queued_behind_a_post_turn_hand_off_starts_in_the_mock():
         assert rt.registry.get(ready["session_id"]).mock.on is True
     finally:
         app.state.runtime = None
+
+
+def test_a_switch_another_turn_has_built_on_stays_when_the_socket_closes(caplog):
+    caplog.set_level(logging.INFO, logger="app.voice.metrics")
+    memory = RecordingMemory()
+    # 0 opening, 1 the socket's cue, 2 its first question, 3 and 4 the interviewer answering POST /turn
+    chat = FakeChat([
+        OPENING, ["[mock: Sprout]"], ["Walk me through your background."], ["Okay. ", "Why Sprout?"],
+        ["Got it. ", "What drew you to analytics?"],
+    ])
+    rt = make_runtime(chat, memory=memory)
+    try:
+        with shared_client(rt) as client:
+            with client.websocket_connect("/ws", headers={"origin": ORIGIN}) as ws:
+                ws.send_json({"type": "hello"})
+                wire = Wire(ws)
+                ready, _ = wire.until("ready")
+                play(ws, wire, turn=1)
+                ws.send_json({"type": "user_text", "text": "Can we practice for Sprout?"})
+                wire.until("reply_end", turn=2)  # the handoff went out, but the page never says it played
+                body = {"text": "I studied information management.", "session_id": ready["session_id"]}
+                answered = client.post("/turn", json=body, headers={"origin": ORIGIN}).text
+                assert '"role": "interviewer"' in answered  # POST /turn answered in that mock
+            deadline = time.monotonic() + 3  # the socket closed with turn 2's switch line unheard
+            while not memory.closed and time.monotonic() < deadline:
+                time.sleep(0.02)
+            assert memory.closed == [ready["session_id"]]
+            body = {"text": "Their analytics team.", "session_id": ready["session_id"]}
+            assert client.post("/turn", json=body, headers={"origin": ORIGIN}).status_code == 200
+        assert rt.registry.get(ready["session_id"]).mock.on is True
+        assert ":undone" not in caplog.text
+        assert "running a mock interview" in chat.calls[4][0]["content"]  # the next POST /turn still reaches the interviewer
+    finally:
+        app.state.runtime = None
