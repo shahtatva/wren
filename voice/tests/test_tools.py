@@ -1,13 +1,17 @@
 import asyncio
 import json
+import sys
+import types
 
 import pytest
 
 from app.conversation import Conversation
+from app.mock import interviewer_name, step_out_reason
 from app.tools.bench import frames_of, room_noise
-from app.tools.samples import RAMBLE, SCENARIOS, SampleReply, Scenario, check, run_scenario
+from app.tools.samples import RAMBLE, SCENARIOS, SampleReply, Scenario, check, maya, run_scenario
 from app.tools.samples import summarize as summarize_replies
 from app.tools.ttfa_report import load_records, percentile, summarize
+from app.turn import INTERVIEW_START
 from app.voice.tuning import Tuning
 from app.voice.vad import rms
 from tests.voice_fakes import USER, FakeChat
@@ -151,6 +155,8 @@ def test_a_scenario_runs_through_run_turn():
     scenario = Scenario("hi", "checkin", lambda: Conversation("s", USER, "checkin", "UTC"), ("Hi there.",))
     replies = asyncio.run(run_scenario(scenario, FakeChat([["Hey. ", "How's the search going?"]]), Tuning()))
     assert [(r.text, r.words, r.flags) for r in replies] == [("Hey. How's the search going?", 5, [])]
+    assert replies[0].model == "fake-chat" and replies[0].switch is None
+    assert replies[0].parts == (("Wren", "Hey. How's the search going?"),)
     assert summarize_replies(replies)["median_words"] == 5
 
 
@@ -160,19 +166,143 @@ def test_summarize_reports_length_and_what_was_flagged():
 
     replies = [reply("Hey. How's the search going?"), reply("Want to try? Or not?"), reply("You did 3 things.")]
     summary = summarize_replies(replies)
-    assert summary == {"replies": 3, "median_words": 5, "max_words": 5, "two_questions": 1, "flagged": 2}
+    assert (summary["replies"], summary["median_words"], summary["max_words"]) == (3, 5, 5)
+    assert (summary["two_questions"], summary["flagged"]) == (1, 2)
 
 
-def test_the_checkin_scenarios_set_one_scene_and_keep_the_conversation():
+def test_summarize_counts_the_switches_seen_and_replies_that_gave_up():
+    def reply(switch=None, repair=None):
+        return SampleReply("s", "Hi.", "Okay.", 1, [], switch=switch, repair=repair)
+
+    summary = summarize_replies([reply("mock_start"), reply(), reply("mock_start"), reply("step_out:done", "gave_up")])
+    assert summary["switches"] == {"mock_start": 2, "step_out:done": 1}
+    assert summary["gave_up"] == 1
+    assert summarize_replies([reply()])["switches"] == {}
+
+
+def test_a_mock_keeps_its_turns_as_post_turn_does_and_each_speaker_is_checked_on_their_own_words():
+    debrief = (
+        "Your opener was clear. The donor project landed. You never said what you did in it. "
+        "Lead with your part. A friend could run the next one. How did that feel?"
+    )
+    chat = FakeChat([
+        ["[mock: Sprout Social]"],
+        ["Thanks for making time. ", "Walk me through your background?"],
+        ["Great answer. ", "Why Sprout?"],
+        [debrief],
+    ])
+    lines = ("Can we practice for Sprout?", "I led the donor project.", "Okay, let's stop there.")
+    scenario = Scenario("mock", "mock", maya, lines)
+    first, answer, stop = asyncio.run(run_scenario(scenario, chat, Tuning()))
+    name = interviewer_name("samples", 1)
+    question = f"I'm {name}, the recruiter at Sprout Social. Thanks for making time. Walk me through your background?"
+    assert first.parts == (("Wren", "Okay, stepping into role."), (name, question))
+    assert (first.switch, first.cues, first.flags) == ("mock_start", ("[mock: Sprout Social]",), [])
+    # The interviewer's words are checked in role, so its praise is flagged.
+    assert answer.parts == ((name, "Great answer. Why Sprout?"),) and answer.flags == ["praise in role"]
+    # A stop debriefs: six sentences are a debrief's to use, and the scripted "Stepping out. It's me again." don't count.
+    assert stop.parts == (("Wren", f"Stepping out. It's me again. {debrief}"),)
+    assert (stop.switch, stop.flags) == ("step_out:stop", [])
+    # The interviewer saw its own question, and the debrief saw the whole mock.
+    assert [m["content"] for m in chat.calls[2][1:]] == [INTERVIEW_START, question, "I led the donor project."]
+    mock = chat.calls[3][0]["content"]
+    assert f"Candidate: I led the donor project.\n{name}: Great answer. Why Sprout?\nCandidate: Okay, let's stop there." in mock
+
+
+def test_a_turn_names_every_model_its_calls_used():
+    """The turn's timing keeps only the last call's model, which would hide a fallback that wrote the cue."""
+
+    async def chat(messages, timing, *, retry=False):
+        timing.model = "first" if len(called) == 0 else "fallback"
+        called.append(timing.model)
+        yield ["[mock]", "Tell me about yourself."][len(called) - 1]
+
+    called = []
+    scenario = Scenario("start", "mock", maya, ("Let's practice.",))
+    [reply] = asyncio.run(run_scenario(scenario, chat, Tuning()))
+    assert reply.model == "first + fallback" and reply.cues == ("[mock]",)
+
+
+def test_the_checkin_scenarios_set_one_scene_and_the_ramble_comes_with_its_question():
     by_name = {s.name: s for s in SCENARIOS if s.group == "checkin"}
     assert list(by_name) == ["opening", "nervous", "ramble", "memory", "person", "crisis"]
     assert 100 <= len(RAMBLE.split()) <= 140  # about 120 words
-    chat = FakeChat([["Okay."], ["Okay."]])
+    chat = FakeChat([["Okay."]])
     asyncio.run(run_scenario(by_name["ramble"], chat, Tuning()))
     system = chat.calls[0][0]["content"]
     for scene in ("Maya", "MS in Information Management", "Sprout Social", "(tomorrow) at 11:00 AM", "2 days since your last session", "[story]"):
         assert scene in system, scene
-    assert [m["content"] for m in chat.calls[1][-3:]] == [RAMBLE, "Okay.", "How was that?"]
+    # One message, so Wren can't credit a retry that never happened.
+    assert len(chat.calls) == 1 and chat.calls[0][-1]["content"] == f"{RAMBLE} How was that?"
+
+
+def test_the_mock_scenarios_reach_the_moments_they_test():
+    by_name = {s.name: s for s in SCENARIOS}
+    assert len(by_name) == len(SCENARIOS)  # --scenario picks them by name
+    assert [s.name for s in SCENARIOS if s.group == "mock"] == [
+        "start", "yes-to-offer", "no-start", "ai-in-role", "crisis-in-role", "flirt-in-role", "stop-mid", "full-mock",
+        "pickup-ai", "pickup-pause", "pickup-cue", "pickup-crisis", "after-crisis",
+    ]
+    assert by_name["yes-to-offer"].setup().turns[-1].text == "Sprout's tomorrow. Want to run the screen once tonight?"
+    # In role, the code steps out for the AI question, the crisis and the stop. Flirting is the interviewer's to catch.
+    in_role = ("ai-in-role", "crisis-in-role", "flirt-in-role", "stop-mid")
+    assert [step_out_reason(by_name[name].lines[0]) for name in in_role] == ["ai", "crisis", None, "stop"]
+    for name in in_role:
+        assert by_name[name].setup().mock.on, name
+    stop = by_name["stop-mid"].setup()
+    assert [t.speaker for t in stop.turns if t.mock == 1] == ["wren", "user", "wren", "user", "wren"]  # two answers
+    # The full mock: four answers, none of which steps out, and one rambles past 150 words.
+    full = by_name["full-mock"].lines
+    assert len(full) == 5 and [step_out_reason(line) for line in full[1:]] == [None] * 4
+    assert max(len(line.split()) for line in full) > 150
+    # Each pickup starts from a paused mock that Wren stepped out of for its reason, and can pick back up.
+    paused = {"pickup-ai": "ai", "pickup-pause": "pause", "pickup-cue": "cue"}
+    for name, why in (*paused.items(), ("pickup-crisis", "crisis"), ("after-crisis", "crisis")):
+        convo = by_name[name].setup()
+        assert (convo.mock.on, convo.mock.resumable, convo.mock.last_step_out) == (False, True, why), name
+        said = convo.turns[-2]
+        assert said.speaker == "user" and said.mock == 1 and step_out_reason(said.text) == (None if why == "cue" else why)
+        assert convo.turns[-1].text.startswith("Stepping out. It's me again. ") and convo.turns[-1].mock is None
+
+
+def test_the_command_line_plays_the_chosen_scenarios_with_its_pause(monkeypatch, capsys):
+    from app import config
+    from app.tools import samples
+
+    made, slept, chat = [], [], FakeChat([])  # every call says "Okay."
+
+    def make_chat(settings, voice, *, max_tokens):
+        made.append((settings, voice, max_tokens))
+        return chat
+
+    real_sleep = asyncio.sleep
+
+    async def fake_sleep(seconds):
+        if seconds:
+            slept.append(seconds)
+        await real_sleep(0)
+
+    monkeypatch.setitem(sys.modules, "app.chat", types.SimpleNamespace(make_chat=make_chat))
+    monkeypatch.setattr(config, "load_settings", lambda: "settings")
+    monkeypatch.setattr(config, "load_voice_settings", lambda: "voice")
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+
+    def convo():
+        return Conversation("s", USER, "checkin", "UTC")
+
+    monkeypatch.setattr(samples, "SCENARIOS", (
+        Scenario("two", "x", convo, ("One.", "Two.")),
+        Scenario("other", "x", convo, ("Hi.",)),
+        Scenario("y", "y", convo, ("Hey.",)),
+    ))
+    assert samples.main(["--group", "x", "--scenario", "two", "--scenario", "y", "--runs", "2", "--pause", "12"]) == 0
+    assert made == [("settings", "voice", Tuning().max_reply_tokens)]
+    assert slept == [12.0, 12.0, 12.0]  # within the first play, between the plays, and within the second
+    out = capsys.readouterr().out
+    assert "x/two, run 2 of 2" in out and "other" not in out and "y/y" not in out
+    assert "4 replies." in out and "Gave up: 0 of 4." in out and "Switches: none" in out and "Models: fake-chat x4" in out
+    with pytest.raises(SystemExit):
+        samples.main(["--group", "y", "--scenario", "two"])  # the filters leave nothing to play
 
 
 def test_the_memory_scenario_has_no_notes_and_the_opening_has_no_user_line():
