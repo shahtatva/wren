@@ -25,7 +25,8 @@ can also hand the floor back by writing [step out]. Either way Wren says "Steppi
 again." and answers as itself, with the mock word for word in its prompt and an instruction that
 fits why it stepped out: debrief it, hold the debrief, say it's an AI, or answer a crisis with
 no debrief. Unless the interview was done or they asked to stop it, Wren's next [mock] cue picks
-it back up. The last mock stays in Wren's prompt while any of its lines are among the recent turns.
+it back up. The last mock stays in Wren's prompt while any of its lines are among the recent turns,
+unless Wren stepped out for a crisis.
 
 The stages come in as callables, like retrieve()'s, so the server, evals and tests can
 each wire their own. Retrieval failing never fails the turn: Wren answers without memories.
@@ -74,7 +75,8 @@ FIRST_QUESTION_LINE = "Let's start simple. Walk me through your background."
 DEBRIEF = (  # done, or stop after an answer
     "You've just stepped out. Debrief it now in short spoken sentences, six at most. Say what landed and what"
     " drifted, using their actual words or stories. Give one fix. If it fits, say a friend could run the next one"
-    " with them. End by asking how it felt."
+    " with them. End by asking how it felt. Your boundaries come first: if what they just said needs one, answer"
+    " that as yourself instead, and skip the debrief."
 )
 NOTHING_YET = (  # stop before any answer
     "They stopped before answering anything, so there's nothing to debrief yet. Ask what they'd like to do."
@@ -238,9 +240,12 @@ def _mock_turns(convo: Conversation, mock: Mock) -> list[HistoryTurn]:
 
 def _shown_mock(convo: Conversation, history: list[HistoryTurn], step_out: str | None) -> Mock | None:
     """The mock Wren sees word for word: the one it just stepped out of, or the last one while any of its
-    lines are among the recent turns."""
+    lines are among the recent turns. After a crisis, only the turn that stepped out sees it: practice waits
+    until they say they're safe, so later turns don't offer feedback."""
     mock = convo.mock
-    if mock is not None and (step_out is not None or any(turn.mock == mock.id for turn in history)):
+    if mock is None or (step_out is None and mock.last_step_out == "crisis"):
+        return None
+    if step_out is not None or any(turn.mock == mock.id for turn in history):
         return mock
     return None
 
@@ -296,8 +301,11 @@ def _candidate(profile: Profile | None) -> str:
     return " ".join(part if ends_a_sentence(part) else f"{part}." for part in parts) or "not given"
 
 
-def _next_step(asked: int, total: int) -> str:
-    """What the interviewer does next, from how many questions it has asked: its turns in the mock."""
+def _next_step(asked: int, total: int, *, resumed: bool = False) -> str:
+    """What the interviewer does next, from how many questions it has asked: its turns in the mock. On a
+    pickup, wherever it was, it asks the question it was on again."""
+    if resumed:
+        return "You're picking the interview back up. Ask the question you were on again, in your own words."
     if asked == 0:
         return "You've just introduced yourself. Ask your first question."
     if asked < total - 1:
@@ -315,10 +323,13 @@ def build_interviewer_messages(
 ) -> list[dict]:
     """The interviewer's context: its card, a fixed start line, then this mock's lines and nothing else,
     with no memories. user_text is their answer, or None when the interviewer speaks first: at the
-    start of the mock, or when it picks back up (resumed)."""
+    start of the mock, or when it picks back up (resumed). A pickup ends on the interviewer's last line,
+    leaving out what they said after it: that made Wren step out, and Wren already answered it."""
     mock = convo.mock
     assert mock is not None, "only a conversation with a mock has an interviewer"
     turns = _mock_turns(convo, mock)
+    while resumed and turns and not turns[-1].in_role:
+        turns.pop()
     target = mock.target
     system = _prompt("interviewer.md").format(
         name=mock.name,
@@ -329,7 +340,7 @@ def build_interviewer_messages(
         stage=target.stage or "a first-round interview",
         notes=target.notes or "none",
         candidate=_candidate(convo.background.profile),
-        next_step=_next_step(sum(turn.in_role for turn in turns), tuning.mock_questions),
+        next_step=_next_step(sum(turn.in_role for turn in turns), tuning.mock_questions, resumed=resumed),
     )
     messages = [{"role": "system", "content": system}, {"role": "user", "content": INTERVIEW_START}]
     messages += [_message(turn, mark_role=False) for turn in turns]
@@ -392,7 +403,8 @@ async def _interview(
         reason = "done" if asked >= tuning.mock_questions else "cue"
         if said:
             unsaved.append(_unsaved(mock, "wren", " ".join(said)))
-    convo.mock, timing.switch = replace(mock, on=False, resumable=reason in _RESUMABLE), f"step_out:{reason}"
+    convo.mock = replace(mock, on=False, resumable=reason in _RESUMABLE, last_step_out=reason)
+    timing.switch = f"step_out:{reason}"
     for spoken in _switch_lines(STEP_OUT):
         yield spoken
     wren = _wren(convo, user_text, retrieve, chat, timing, tuning, utcnow, step_out=reason, unsaved=unsaved)
@@ -481,13 +493,15 @@ async def _pick_back_up(
     convo: Conversation, mock: Mock, chat: Chat, timing: TurnTiming, tuning: Tuning
 ) -> AsyncIterator[Spoken]:
     """Resume the paused mock, with the same interviewer and question count: Wren's switch line, then the
-    interviewer carries on."""
-    mock = replace(mock, on=True, resumable=False)
+    interviewer asks the question it was on again. If that call fails twice, it says its last line as saved."""
+    mock = replace(mock, on=True, resumable=False, last_step_out=None)
     convo.mock, timing.switch = mock, "mock_resume"
     for spoken in _switch_lines(STEP_BACK_IN):
         yield spoken
     messages = build_interviewer_messages(convo, None, tuning, resumed=True)
-    async with aclosing(_reply(messages, chat, timing, None, mock=mock.id, fallback=RETRY_LINE)) as reply:
+    said = [turn.text for turn in _mock_turns(convo, mock) if turn.in_role]
+    fallback = said[-1] if said else FIRST_QUESTION_LINE
+    async with aclosing(_reply(messages, chat, timing, None, mock=mock.id, fallback=fallback)) as reply:
         async for spoken in reply:
             yield spoken
 

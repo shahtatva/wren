@@ -459,8 +459,8 @@ def test_the_interviewers_messages_alternate_and_a_resume_comes_last():
     messages = build_interviewer_messages(convo, "Hello?", Tuning())
     assert [m["role"] for m in messages[1:]] == ["user", "assistant", "user"]
     assert messages[-1] == {"role": "user", "content": "answer 1\nHello?"}
-    resumed = build_interviewer_messages(convo, None, Tuning(), resumed=True)
-    assert resumed[-1] == {"role": "user", "content": f"answer 1\n{INTERVIEW_RESUME}"}
+    resumed = build_interviewer_messages(convo, None, Tuning(), resumed=True)  # leaves out what came after its last line
+    assert resumed[-1] == {"role": "user", "content": INTERVIEW_RESUME}
 
 
 def test_after_a_restart_role_lines_are_marked_and_merged():
@@ -642,6 +642,73 @@ def test_stepping_out_shows_the_whole_mock_in_order_and_leaves_it_out_of_the_his
     assert "Dana: Question 5?\nCandidate: Let's stop there.\n" in messages[0]["content"]
     assert not any("Question 5?" in m["content"] for m in messages[1:])
     assert messages[-1] == {"role": "user", "content": "Let's stop there."}
+
+
+def test_a_boundary_only_the_interviewer_caught_comes_first_even_in_a_debrief():
+    # The code leaves "I don't want to be here anymore" to the interviewer: it's also a real answer.
+    _, chat, timing, _ = step_out_turn(in_mock(4), "Honestly, I don't want to be here anymore.",
+                                       ["[step out]"], ["I'm really glad you told me."])
+    system = chat.messages[1][0]["content"]
+    assert timing.switch == "step_out:done" and "Debrief it now" in system and "Your boundaries come first" in system
+
+
+def test_a_done_mock_ends_and_a_crisis_one_can_pick_back_up():
+    done, crisis = in_mock(6), in_mock(2)
+    step_out_turn(done, "Thanks!", ["Good work. How did that feel?"])
+    step_out_turn(crisis, "I keep thinking about killing myself.", ["I'm really glad you told me."])
+    assert (done.mock.resumable, done.mock.last_step_out) == (False, "done")
+    assert (crisis.mock.resumable, crisis.mock.last_step_out) == (True, "crisis")
+
+
+def paused_at_question_2() -> Conversation:
+    """in_mock(2), after "Wait, are you a real person?" made Wren step out and answer."""
+    convo = in_mock(2)
+    convo.add("user", "Wait, are you a real person?", mock=1)
+    convo.add("wren", "Stepping out. It's me again. No, I'm an AI. Want to pick it back up?")
+    convo.mock = replace(SPROUT_MOCK, on=False, resumable=True, last_step_out="ai")
+    return convo
+
+
+def test_a_pickup_leaves_out_the_words_that_stepped_out():
+    messages = build_interviewer_messages(paused_at_question_2(), None, Tuning(), resumed=True)
+    assert not any("Wait, are you a real person?" in m["content"] for m in messages)  # Wren already answered it
+    assert messages[-2:] == [{"role": "assistant", "content": "Question 2?"}, {"role": "user", "content": INTERVIEW_RESUME}]
+
+
+@pytest.mark.parametrize("asked", [2, 4])
+def test_a_pickup_asks_the_question_it_was_on_again(asked):
+    system = build_interviewer_messages(in_mock(asked), None, Tuning(), resumed=True)[0]["content"]
+    assert "- Next: You're picking the interview back up. Ask the question you were on again, in your own words.\n" in system
+    assert "You've asked" not in system  # not even after the last question
+
+
+@pytest.mark.parametrize("mock_lines, line", [
+    (True, "Question 2?"),
+    (False, "Let's start simple. Walk me through your background."),  # nothing to ask again
+])
+def test_a_pickup_that_fails_twice_asks_its_last_question_again(mock_lines, line):
+    convo = paused_at_question_2() if mock_lines else conversation()
+    convo.mock = replace(SPROUT_MOCK, on=False, resumable=True, last_step_out="ai")  # paused, with lines or none
+    chat = ScriptedChat(["[mock]"], ["I"], ["I"])
+    out = asyncio.run(_collect(run_turn(convo, "Yes, let's keep going.", retrieve=_no_memories, chat=chat, timing=TurnTiming(9, "checkin", "voice"))))
+    assert out == ["Okay, stepping back into role.", line] and out[-1].mock == 1
+    assert convo.mock.on and convo.mock.last_step_out is None
+
+
+def test_after_a_crisis_the_mock_leaves_wrens_prompt():
+    convo = in_mock(2)
+    step_out_turn(convo, "I keep thinking about killing myself.", ["I'm really glad you told me."])
+    convo.add("user", "I keep thinking about killing myself.", mock=1)
+    convo.add("wren", "Stepping out. It's me again. I'm really glad you told me.")
+    messages = build_messages(convo, "Thanks. I'm safe now.", [], NOW, Tuning())
+    assert "The mock interview" not in messages[0]["content"]
+    history = "\n".join(m["content"] for m in messages[1:])
+    assert "I keep thinking about killing myself." in history and "[As the interviewer] Question 2?" in history
+
+
+def test_the_interviewer_card_talks_for_the_ear():
+    system = build_interviewer_messages(in_mock(1), "hi", Tuning())[0]["content"]
+    assert "links or parentheses" in system and "Write numbers as words" in system
 
 
 def test_an_interviewer_that_fails_its_first_question_starts_simple():
