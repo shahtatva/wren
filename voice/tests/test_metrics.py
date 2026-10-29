@@ -1,4 +1,5 @@
 import logging
+from dataclasses import replace
 from datetime import datetime
 
 import pytest
@@ -62,3 +63,11 @@ def test_log_line_warns_over_1500ms(caplog):
     message = slow.getMessage()
     for field in ("session=s-1", "turn=4", "ttfa_ms=1600", "speech_end_at=", "first_token_at=", "first_audio_at=", "outcome=complete"):
         assert field in message
+
+
+def test_record_and_log_line_say_when_a_turn_switched_roles(caplog):
+    caplog.set_level(logging.INFO, logger="app.voice.metrics")
+    timing = replace(voice_turn(), switch="mock_start")
+    assert timing.record()["switch"] == "mock_start"
+    log_turn("s-1", timing)
+    assert "switch=mock_start" in caplog.text

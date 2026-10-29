@@ -637,3 +637,126 @@ def test_a_second_barge_in_during_the_same_pause_changes_nothing():
         assert time.monotonic() - paused_at < 0.9  # the window still runs from the first barge_in
     finally:
         session.__exit__(None, None, None)
+
+
+def test_a_mock_hands_off_and_the_hold_follows_the_interviewer():
+    memory = RecordingMemory()
+    chat = FakeChat([OPENING, ["[mock: Sprout]"], ["Walk me through your background."], ["Okay. ", "Why Sprout?"]])
+    session, ws, wire, ready, stt, rt = speaking_session(chat, memory=memory, tuning=replace(FAST, hold_mock_s=0.4))
+    try:
+        ws.send_json({"type": "user_text", "text": "Can we practice for Sprout?"})
+        mock, _ = wire.until("mock")
+        assert mock["on"] is True and mock["company"] == "Sprout" and mock["title"] == "interviewer"
+        segments = play(ws, wire, turn=2)
+        assert segments[0]["text"] == "Okay, stepping into role." and "role" not in segments[0]
+        assert [s.get("role") for s in segments[1:]] == ["interviewer", "interviewer"]
+        send_silence(ws, stt, 1.0)
+        stt.emit(final("I studied information management.", 0.2, 0.8))
+        metrics, _ = wire.until("metrics", turn=3)
+        assert metrics["mode"] == "mock" and metrics["endpoint_ms"] >= 400
+        saved = [(r["speaker"], r.get("mock"), r.get("as")) for r in memory.appended]
+        assert saved[1:4] == [("user", None, None), ("wren", None, None), ("wren", 1, "interviewer")]  # [0] is the opening
+    finally:
+        session.__exit__(None, None, None)
+
+
+def test_a_handoff_cut_before_its_switch_line_is_undone():
+    chat = FakeChat([OPENING, ["Sure, let's run the Sprout screen together. [mock]"], ["Walk me through your background."]], hang_before={2})
+    session, ws, wire, ready, stt, rt = speaking_session(chat)
+    try:
+        ws.send_json({"type": "user_text", "text": "Can we practice?"})
+        wire.until("segment_end", turn=2, seg=2)  # the introduction, in role, is synthesized too
+        ws.send_json({"type": "playback", "turn": 2, "seg": 0, "event": "start"})
+        ws.send_json({"type": "barge_in", "turn": 2, "seg": 0, "played_ms": 100, "onset_ms": 120})
+        wire.quiet(0.1)
+        stt.emit(interim("wait, not tonight"))
+        wire.until("interrupt", turn=2)
+        wire.until("mock", on=False)
+        assert rt.registry.get(ready["session_id"]).mock is None
+    finally:
+        session.__exit__(None, None, None)
+
+
+def test_a_reconnect_mid_mock_keeps_the_interviewer():
+    chat = FakeChat([OPENING, ["[mock]"], ["Walk me through your background."], ["Okay. ", "Why this role?"]])
+    runtime = make_runtime(chat, stt=None)
+    with voice_session(runtime) as (ws, wire, ready):
+        play(ws, wire, turn=1)
+        ws.send_json({"type": "user_text", "text": "Let's practice."})
+        play(ws, wire, turn=2)
+        session_id = ready["session_id"]
+    with voice_session(runtime, session_id=session_id) as (ws, wire, ready):
+        mock, _ = wire.until("mock")
+        assert ready["resumed"] is True and mock["on"] is True
+        ws.send_json({"type": "user_text", "text": "I studied information management."})
+        metrics, _ = wire.until("metrics")
+        assert metrics["mode"] == "mock"
+        wire.until("reply_end")
+    assert "running a mock interview" in chat.calls[3][0]["content"]
+
+
+def test_a_step_out_turn_saves_one_turn_per_speaker():
+    memory = RecordingMemory()
+    chat = FakeChat([
+        OPENING, ["[mock: Sprout]"], ["Walk me through your background."],
+        ["Thanks, that's all I had. [step out]"], ["You kept it short. ", "How did that feel?"],
+    ])
+    session, ws, wire, ready, stt, rt = speaking_session(chat, memory=memory)
+    try:
+        ws.send_json({"type": "user_text", "text": "Can we practice for Sprout?"})
+        play(ws, wire, turn=2)
+        ws.send_json({"type": "user_text", "text": "I studied information management."})
+        segments = play(ws, wire, turn=3)
+        assert [s.get("role") for s in segments] == ["interviewer", None, None, None, None]
+        saved = [(r["speaker"], r["text"], r.get("mock"), r.get("as")) for r in memory.appended[-3:]]
+        assert saved == [
+            ("user", "I studied information management.", 1, None),  # the interviewer had the floor
+            ("wren", "Thanks, that's all I had.", 1, "interviewer"),
+            ("wren", "Stepping out. It's me again. You kept it short. How did that feel?", None, None),
+        ]
+        assert "metrics" in memory.appended[-2] and "metrics" not in memory.appended[-1]
+    finally:
+        session.__exit__(None, None, None)
+
+
+def test_a_pickup_cut_before_its_switch_line_leaves_the_mock_paused():
+    chat = FakeChat([
+        OPENING, ["[mock: Sprout]"], ["Walk me through your background."], ["Sure, what's up?"], ["[mock]"],
+        ["So, your background?"],
+    ], hang_before={5})
+    session, ws, wire, ready, stt, rt = speaking_session(chat)
+    try:
+        ws.send_json({"type": "user_text", "text": "Can we practice for Sprout?"})
+        play(ws, wire, turn=2)
+        ws.send_json({"type": "user_text", "text": "Wren, can I ask you something?"})
+        play(ws, wire, turn=3)
+        convo = rt.registry.get(ready["session_id"])
+        paused = convo.mock
+        assert paused.on is False and paused.resumable is True
+        ws.send_json({"type": "user_text", "text": "Never mind, let's keep going."})
+        picked_up, _ = wire.until("mock", on=True)
+        wire.until("segment_end", turn=4, seg=0)  # "Okay, stepping back into role." went out, unheard
+        ws.send_json({"type": "user_text", "text": "Wait, one more thing first."})
+        wire.until("interrupt", turn=4)
+        undone, _ = wire.until("mock")
+        assert undone == {**picked_up, "on": False}
+        assert convo.mock is paused  # restored as it was, so it can still be picked back up
+    finally:
+        session.__exit__(None, None, None)
+
+
+def test_a_handoff_merged_into_their_next_words_is_undone():
+    chat = FakeChat([OPENING, ["[mock]"], ["Walk me through your background."], ["Another time, then."]], hang_before={2})
+    runtime = make_runtime(chat, stt=None)
+    with voice_session(runtime, voice_out=False) as (ws, wire, ready):  # text only: segments count as played at once
+        play(ws, wire, turn=1)
+        ws.send_json({"type": "user_text", "text": "Can we practice?"})
+        wire.until("segment", turn=2, seg=1)  # the introduction: the first question is still coming
+        ws.send_json({"type": "user_text", "text": "Actually, not tonight."})
+        end, seen = wire.until("reply_end", turn=2)
+        assert end["outcome"] == "continued"
+        assert [m["on"] for m in seen if m["type"] == "mock"] == [False]
+        merged, _ = wire.until("user_turn", turn=3)
+        assert merged["text"] == "Can we practice? Actually, not tonight."
+        wire.until("reply_end", turn=3)
+        assert runtime.registry.get(ready["session_id"]).mock is None

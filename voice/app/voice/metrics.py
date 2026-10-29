@@ -96,10 +96,10 @@ def log_turn(session_id: str, timing: TurnTiming) -> None:
 
     logger.log(
         level,
-        "turn session=%s turn=%s mode=%s input=%s outcome=%s ttfa_ms=%s endpoint_ms=%s retrieval_ms=%s "
+        "turn session=%s turn=%s mode=%s input=%s outcome=%s switch=%s ttfa_ms=%s endpoint_ms=%s retrieval_ms=%s "
         "llm_ttft_ms=%s segment_ms=%s tts_ttfb_ms=%s turn_to_audio_ms=%s memories=%s context_tokens=%s "
         "model=%s fallback=%s barge_in_ms=%s speech_end_at=%s first_token_at=%s first_audio_at=%s",
-        session_id, r["turn"], r["mode"], r["input"], v("outcome"), v("ttfa_ms"), v("endpoint_ms"),
+        session_id, r["turn"], r["mode"], r["input"], v("outcome"), v("switch"), v("ttfa_ms"), v("endpoint_ms"),
         v("retrieval_ms"), v("llm_ttft_ms"), v("segment_ms"), v("tts_ttfb_ms"), v("turn_to_audio_ms"),
         r["memories"], v("context_tokens"), v("model"),
         r["chat_fallback"] or r["retrieval_fallback"] or "-",

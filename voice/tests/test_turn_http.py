@@ -47,6 +47,25 @@ def test_post_turn_continues_a_known_session():
         app.state.runtime = None
 
 
+def test_post_turn_hands_off_and_keeps_the_mock_across_requests():
+    memory = RecordingMemory()
+    chat = FakeChat([["[mock: Sprout]"], ["Walk me through your background."], ["Okay. ", "Why Sprout?"]])
+    app.state.runtime = make_runtime(chat, memory=memory)
+    try:
+        with TestClient(app, client=("127.0.0.1", 50000)) as client:
+            first = lines(client.post("/turn", json={"text": "Can we practice for Sprout?"}, headers={"origin": ORIGIN}))
+            session_id = first[0]["session_id"]
+            client.post("/turn", json={"text": "I studied information management.", "session_id": session_id}, headers={"origin": ORIGIN})
+        assert [m["on"] for m in first if m["type"] == "mock"] == [True]
+        assert [m.get("role") for m in first if m["type"] == "segment"] == [None, "interviewer", "interviewer"]
+        assert "running a mock interview" in chat.calls[2][0]["content"]
+        assert [(r["speaker"], r.get("as")) for r in memory.appended] == [
+            ("user", None), ("wren", None), ("wren", "interviewer"), ("user", None), ("wren", "interviewer")]
+        assert memory.appended[3]["mock"] == 1
+    finally:
+        app.state.runtime = None
+
+
 def test_post_turn_without_identity_is_401():
     app.state.runtime = make_runtime(FakeChat([["x"]]))
     try:

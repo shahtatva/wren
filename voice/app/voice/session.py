@@ -12,6 +12,13 @@ Wren's own words and backchannels resume playback instead. Speech while thinking
 cancels the reply and merges into the user's turn. Wren's turns keep only the words the
 user heard, so the next context shows where Wren was cut off.
 
+In a mock interview, run_turn says who speaks each segment. A segment spoken in role
+reaches the page with "role": "interviewer", and a "mock" message goes out before each
+line that hands over the floor. A reply that changes speaker saves as one turn per
+speaker, and the user's words belong to the mock if the interviewer had the floor. A
+switch counts only if the user heard at least part of its line: a reply cut before it,
+or dropped because the user kept talking, gives the floor back and tells the page.
+
 Every voice turn logs three timestamps: the end of the user's speech, the first LLM
 token and the first audio byte sent, with the time to first audio between them. The
 browser gets the same record for its debug panel.
@@ -26,8 +33,9 @@ from uuid import UUID
 
 from fastapi import WebSocket
 
-from app.conversation import Conversation
+from app.conversation import Conversation, reply_runs
 from app.memory.live import NoMemory
+from app.mock import Mock
 from app.runtime import Runtime
 from app.turn import run_turn
 from app.voice import clock
@@ -35,7 +43,7 @@ from app.voice.bargein import is_echo, is_interruption, real_words
 from app.voice.endpoint import Commit, EndOfTurn
 from app.voice.events import SpeechStarted, SttEvent, Transcript, UtteranceEnd
 from app.voice.metrics import TurnTiming, log_turn
-from app.voice.protocol import BargeIn, End, Hello, Mic, Playback, UserText, pack_audio, parse_client
+from app.voice.protocol import BargeIn, End, Hello, Mic, Playback, UserText, mock_message, pack_audio, parse_client
 from app.voice.stt import Stt
 from app.voice.timeline import AudioTimeline
 from app.voice.vad import EnergyVad
@@ -56,6 +64,8 @@ SESSION_OVER_CLOSE = 4410  # the session cap's close code: the page doesn't reco
 class Segment:
     index: int
     text: str
+    mock: int | None = None  # the mock whose interviewer speaks it, or None for Wren
+    switch: bool = False  # the line that hands over the floor
     samples: int = 0  # 24 kHz samples sent to the browser
     started_at: float | None = None  # when the browser started playing it
     played: bool = False  # the browser finished it, or it had no audio
@@ -69,6 +79,7 @@ class Reply:
     no: int
     user_text: str | None  # None for the opening line
     timing: TurnTiming
+    mock_before: Mock | None  # the conversation's mock when the turn started, to undo a switch nobody heard
     segments: list[Segment] = field(default_factory=list)
     task: asyncio.Task | None = None
     llm_done: bool = False
@@ -80,13 +91,14 @@ class Reply:
     def full_text(self) -> str:
         return " ".join(s.text for s in self.segments)
 
-    def heard_text(self, now: float) -> str:
-        """Fully played segments, then the share of the cut segment that played. Aura-2 gives
-        no word timings, so the cut is proportional to playback time, rounded down."""
-        heard: list[str] = []
+    def heard(self, now: float) -> list[tuple[Segment, str]]:
+        """Each segment the user heard, with the words of it they heard: the fully played segments,
+        then the share of the cut segment that played, if a word of it did. Aura-2 gives no word
+        timings, so the cut is proportional to playback time, rounded down."""
+        heard: list[tuple[Segment, str]] = []
         for seg in self.segments:
             if seg.played:
-                heard.extend(seg.text.split())
+                heard.append((seg, seg.text))
                 continue
             if self.pause and self.pause[0] == seg.index:
                 played_ms = self.pause[1]
@@ -97,9 +109,13 @@ class Reply:
             words = seg.text.split()
             total = seg.duration_ms()
             fraction = min(1.0, played_ms / total) if total else 0.0
-            heard.extend(words[: int(len(words) * fraction)])
+            if cut := words[: int(len(words) * fraction)]:
+                heard.append((seg, " ".join(cut)))
             break
-        return " ".join(heard)
+        return heard
+
+    def heard_text(self, now: float) -> str:
+        return " ".join(words for _, words in self.heard(now))
 
 
 class VoiceSession:
@@ -197,6 +213,7 @@ class VoiceSession:
             session_id, background, turns = opened
             self.convo = Conversation(session_id, self.user_id, self.hello.mode, self.hello.tz, background, turns)
             self.rt.registry.put(self.convo)
+        self.endpoint.hold_s = self.rt.tuning.hold_s(self.convo.turn_mode)  # a reconnect can land mid-mock
         resumed = bool(self.convo.turns)
         await self._connect_stt()
         if self._speaks:
@@ -209,6 +226,8 @@ class VoiceSession:
             "model": self.rt.voice.groq_chat_model,
             "resumed": resumed,
         })
+        if self.convo.mock is not None and self.convo.mock.on:  # the interviewer still has the floor
+            await self._send(mock_message(self.convo.mock))
         if self.stt is None and self.rt.connect_stt is not None:
             await self._send({"type": "voice", "available": False, "reason": "stt_unavailable"})
         if not resumed:
@@ -371,8 +390,8 @@ class VoiceSession:
         if self.reply is not None and not self.reply.finished:
             await self._interrupt(self.reply)
         self._turn = self._turn % 65535 + 1
-        timing = TurnTiming(turn=self._turn, mode=self.convo.mode, input=kind, speech_end=speech_end, committed=clock.now())
-        reply = Reply(self._turn, user_text, timing)
+        timing = TurnTiming(turn=self._turn, mode=self.convo.turn_mode, input=kind, speech_end=speech_end, committed=clock.now())
+        reply = Reply(self._turn, user_text, timing, mock_before=self.convo.mock)
         self.reply, self.state = reply, "thinking"
         if user_text is not None:
             await self._send({"type": "user_turn", "turn": reply.no, "text": user_text})
@@ -383,13 +402,18 @@ class VoiceSession:
     async def _generate(self, reply: Reply) -> None:
         try:
             async with self.convo.lock:
-                async for text in run_turn(
+                async for spoken in run_turn(
                     self.convo, reply.user_text, retrieve=self._retrieve, chat=self.rt.chat,
                     timing=reply.timing, tuning=self.rt.tuning,
                 ):
-                    seg = Segment(len(reply.segments), text)
+                    if spoken.switch:  # run_turn has just handed over the floor
+                        await self._send(mock_message(self.convo.mock))
+                    seg = Segment(len(reply.segments), spoken, mock=spoken.mock, switch=spoken.switch)
                     reply.segments.append(seg)
-                    await self._send({"type": "segment", "turn": reply.no, "seg": seg.index, "text": text})
+                    message = {"type": "segment", "turn": reply.no, "seg": seg.index, "text": spoken}
+                    if seg.mock is not None:
+                        message["role"] = "interviewer"
+                    await self._send(message)
                     await self._speak(reply, seg)
             reply.llm_done = reply.end_sent = True
             await self._send({"type": "reply_end", "turn": reply.no, "outcome": "complete"})
@@ -453,18 +477,20 @@ class VoiceSession:
         timing.outcome = outcome
         if outcome == "continued":
             timing.barge_in_ms = None
-        records = []
+        if outcome == "complete":
+            heard = [(seg, seg.text) for seg in reply.segments]
+        elif outcome == "continued":  # dropped: their words carry on into their next turn
+            heard = []
+        else:
+            heard = reply.heard(clock.now())
+        # A switch counts only if the user heard at least part of its line. If they didn't, the floor
+        # goes back before any await, so no other turn starts from a speaker they never heard take over.
+        undone = self.convo.mock is not reply.mock_before and not any(seg.switch for seg, _ in heard)
+        if undone:
+            self.convo.mock = reply.mock_before
         if outcome != "continued":
-            if reply.user_text is not None:
-                records.append(self.convo.add("user", reply.user_text).record())
-            full = reply.full_text()
-            heard = full if outcome == "complete" else reply.heard_text(clock.now())
-            if heard:
-                wren = self.convo.add("wren", heard, interrupted=heard != full).record()
-                wren["metrics"] = timing.record()
-                records.append(wren)
-        if records:
-            self._persist(records)
+            self._save_turn(reply, heard)
+        self.endpoint.hold_s = self.rt.tuning.hold_s(self.convo.turn_mode)
         if outcome in ("complete", "interrupted") and reply.segments:
             self._recent_wren = reply.full_text()
             self._recent_wren_until = clock.now() + self.rt.tuning.echo_tail_s
@@ -472,11 +498,32 @@ class VoiceSession:
         record = timing.record()
         if self.rt.turn_log is not None:
             self._spawn(self.rt.turn_log.write(self.convo.session_id, record), save=True)
+        if undone:
+            await self._send(mock_message(self.convo.mock))
         await self._send({"type": "metrics", **record})
         if not reply.end_sent:
             await self._send({"type": "reply_end", "turn": reply.no, "outcome": outcome})
         if self.reply is reply:
             self.reply, self.state = None, "listening"
+
+    def _save_turn(self, reply: Reply, heard: list[tuple[Segment, str]]) -> None:
+        """Add the turn to the conversation and save it: the user's words, then Wren's as heard, one
+        turn per speaker. Only the last can be cut off, and the first carries the turn's metrics."""
+        before = reply.mock_before
+        records = []
+        if reply.user_text is not None:  # their words belong to the mock if the interviewer had the floor
+            theirs = before.id if before is not None and before.on else None
+            records.append(self.convo.add("user", reply.user_text, mock=theirs).record())
+        runs = reply_runs((words, seg.mock) for seg, words in heard)
+        cut = " ".join(words for _, words in heard) != reply.full_text()
+        for i, (text, mock) in enumerate(runs):
+            last = i == len(runs) - 1
+            wren = self.convo.add("wren", text, interrupted=cut and last, mock=mock, in_role=mock is not None).record()
+            if i == 0:
+                wren["metrics"] = reply.timing.record()
+            records.append(wren)
+        if records:
+            self._persist(records)
 
     # --- the browser ---
 

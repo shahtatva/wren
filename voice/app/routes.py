@@ -23,14 +23,14 @@ from pydantic import BaseModel, Field, StringConstraints
 from starlette.websockets import WebSocketDisconnect
 from typing import Annotated, Literal
 
-from app.conversation import Conversation
+from app.conversation import Conversation, reply_runs
 from app.runtime import Runtime, get_runtime
 from app.throttle import Throttled
-from app.turn import run_turn
+from app.turn import Spoken, run_turn
 from app.voice import clock
 from app.voice.identity import Identity, bearer_token, resolve_identity
 from app.voice.metrics import TurnTiming, log_turn
-from app.voice.protocol import Hello, parse_client
+from app.voice.protocol import Hello, mock_message, parse_client
 from app.voice.session import VoiceSession
 
 logger = logging.getLogger(__name__)
@@ -137,18 +137,27 @@ async def post_turn(body: TurnRequest, request: Request) -> Response:
     async def stream():
         yield json.dumps({"type": "session", "session_id": convo.session_id, "memory": memory.status}) + "\n"
         timing = TurnTiming(turn=len(convo.turns) // 2 + 1, mode=convo.mode, input="text", committed=clock.now())
-        texts: list[str] = []
+        said: list[Spoken] = []
         try:
             async with convo.lock:
-                async for text in run_turn(
+                # Who has the floor is read under the lock: a turn on the voice socket can be handing it over.
+                floor, timing.mode = convo.mock, convo.turn_mode
+                async for spoken in run_turn(
                     convo, body.text, retrieve=lambda t: memory.retrieve(user_id, t), chat=runtime.chat,
                     timing=timing, tuning=runtime.tuning,
                 ):
-                    texts.append(text)
-                    yield json.dumps({"type": "segment", "text": text}) + "\n"
-                records = [convo.add("user", body.text).record()]
-                if texts:
-                    records.append(convo.add("wren", " ".join(texts)).record())
+                    if spoken.switch:  # run_turn has just handed over the floor
+                        yield json.dumps(mock_message(convo.mock)) + "\n"
+                    said.append(spoken)
+                    line = {"type": "segment", "text": spoken}
+                    if spoken.mock is not None:
+                        line["role"] = "interviewer"
+                    yield json.dumps(line) + "\n"
+                # Their words belong to the mock if the interviewer had the floor. Wren's save one turn per speaker.
+                theirs = floor.id if floor is not None and floor.on else None
+                records = [convo.add("user", body.text, mock=theirs).record()]
+                for text, mock in reply_runs((spoken, spoken.mock) for spoken in said):
+                    records.append(convo.add("wren", text, mock=mock, in_role=mock is not None).record())
             timing.outcome = "complete"
             await memory.append(convo.session_id, user_id, records)
         except Exception as e:

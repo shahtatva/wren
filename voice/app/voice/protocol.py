@@ -13,6 +13,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, Field, StringConstraints, TypeAdapter, ValidationError, field_validator
 
+from app.mock import Mock
+
 _HEADER = struct.Struct(">HH")
 
 
@@ -83,6 +85,19 @@ def parse_client(raw: str) -> ClientMessage:
             for error in e.errors(include_input=False, include_url=False)
         )
         raise ValueError(f"bad client message: {problems}") from None
+
+
+def mock_message(mock: Mock | None) -> dict:
+    """The downstream "mock" message, on the socket and in POST /turn's NDJSON: whether an interviewer
+    has the floor, and who it is. A mock that stepped out still names its interviewer; with no mock
+    yet, the names are None."""
+    return {
+        "type": "mock",
+        "on": mock is not None and mock.on,
+        "name": None if mock is None else mock.name,
+        "title": None if mock is None else mock.title,
+        "company": None if mock is None else mock.target.company,
+    }
 
 
 def pack_audio(turn: int, seg: int, pcm: bytes) -> bytes:
