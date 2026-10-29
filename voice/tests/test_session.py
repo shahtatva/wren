@@ -756,7 +756,34 @@ def test_a_handoff_merged_into_their_next_words_is_undone():
         end, seen = wire.until("reply_end", turn=2)
         assert end["outcome"] == "continued"
         assert [m["on"] for m in seen if m["type"] == "mock"] == [False]
+        assert [m["switch"] for m in seen if m["type"] == "metrics"] == ["mock_start:undone"]  # tried, never heard
         merged, _ = wire.until("user_turn", turn=3)
         assert merged["text"] == "Can we practice? Actually, not tonight."
         wire.until("reply_end", turn=3)
         assert runtime.registry.get(ready["session_id"]).mock is None
+
+
+def test_a_crisis_step_out_stands_even_if_its_line_was_never_heard():
+    chat = FakeChat(
+        [OPENING, ["[mock: Sprout]"], ["Walk me through your background."], ["I'm here with you."]],
+        hang_after={3: 0},  # Wren's answer never starts: only "Stepping out." and "It's me again." go out
+    )
+    session, ws, wire, ready, stt, rt = speaking_session(chat)
+    try:
+        ws.send_json({"type": "user_text", "text": "Can we practice for Sprout?"})
+        play(ws, wire, turn=2)
+        ws.send_json({"type": "user_text", "text": "Honestly I want to end my life."})
+        wire.until("segment_end", turn=3, seg=1)  # neither line has started playing
+        stt.emit(interim("sorry, ignore that"))
+        _, cut = wire.until("interrupt", turn=3)
+        stt.emit(final("Sorry, ignore that.", 0.1, 0.9))
+        _, after = wire.until("reply_end", turn=4)
+        assert not [m for m in cut + after if m["type"] == "mock"]  # the page never hears the interviewer is back
+        assert [m["switch"] for m in after if m["type"] == "metrics" and m["turn"] == 3] == ["step_out:crisis"]
+        convo = rt.registry.get(ready["session_id"])
+        assert convo.mock.on is False and convo.mock.last_step_out == "crisis"
+        system = chat.calls[4][0]["content"]  # Wren's prompt, not the interviewer card
+        assert system.startswith("You are Wren") and "running a mock interview" not in system
+        assert chat.calls[4][-1]["content"] == "Honestly I want to end my life.\nSorry, ignore that."  # Wren sees both
+    finally:
+        session.__exit__(None, None, None)

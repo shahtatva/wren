@@ -18,6 +18,7 @@ line that hands over the floor. A reply that changes speaker saves as one turn p
 speaker, and the user's words belong to the mock if the interviewer had the floor. A
 switch counts only if the user heard at least part of its line: a reply cut before it,
 or dropped because the user kept talking, gives the floor back and tells the page.
+Stepping out for a crisis always stands, heard or not: boundaries break role at once.
 
 Every voice turn logs three timestamps: the end of the user's speech, the first LLM
 token and the first audio byte sent, with the time to first audio between them. The
@@ -485,9 +486,13 @@ class VoiceSession:
             heard = reply.heard(clock.now())
         # A switch counts only if the user heard at least part of its line. If they didn't, the floor
         # goes back before any await, so no other turn starts from a speaker they never heard take over.
-        undone = self.convo.mock is not reply.mock_before and not any(seg.switch for seg, _ in heard)
+        # Stepping out for a crisis stands even unheard: boundaries break role at once.
+        moved = self.convo.mock is not reply.mock_before
+        crisis = moved and self.convo.mock is not None and self.convo.mock.last_step_out == "crisis"
+        undone = moved and not crisis and not any(seg.switch for seg, _ in heard)
         if undone:
             self.convo.mock = reply.mock_before
+            timing.switch = f"{timing.switch}:undone"  # the turn log shows it was tried, not that it happened
         if outcome != "continued":
             self._save_turn(reply, heard)
         self.endpoint.hold_s = self.rt.tuning.hold_s(self.convo.turn_mode)

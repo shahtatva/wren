@@ -51,7 +51,7 @@ class TurnTiming:
     reply_repair: str | None = None  # dropped_tail, retried or gave_up: see run_turn
     finish_reason: str | None = None  # why the model's stream ended: "length" means the token cap
     completion_tokens: int | None = None  # reasoning plus reply, as the provider counted them
-    switch: str | None = None  # mock_start, mock_resume or step_out:<why>, when the speaker changed
+    switch: str | None = None  # mock_start, mock_resume or step_out:<why>; ":undone" follows if nobody heard it
 
     def ttfa_ms(self) -> int | None:
         return _ms(self.speech_end, self.first_audio_sent)
