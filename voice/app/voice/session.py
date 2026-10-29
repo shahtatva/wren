@@ -16,10 +16,13 @@ In a mock interview, run_turn says who speaks each segment. A segment spoken in 
 reaches the page with "role": "interviewer", and a "mock" message goes out before each
 line that hands over the floor. A reply that changes speaker saves as one turn per
 speaker, and the user's words belong to the mock if the interviewer had the floor. A
-switch counts only if the user heard at least part of its line: a reply cut before it,
-or dropped because the user kept talking, gives the floor back and tells the page. A
-reply only ever undoes its own switch, and only if no other turn has built on it.
-Stepping out for a crisis always stands, heard or not: boundaries break role at once.
+switch counts only if the user heard at least part of its line. On a live socket, a
+reply cut before that line, by a barge-in, the user still talking or a failure, gives
+the floor back and tells the page. It undoes only its own switch, and not once the floor
+has moved on or another turn has been saved since. A socket that closes undoes nothing:
+its page already showed the switch's words, and POST /turn or a reconnect may be using
+that floor without having saved a turn yet. Stepping out for a crisis always stands,
+heard or not: boundaries break role at once.
 
 Every voice turn logs three timestamps: the end of the user's speech, the first LLM
 token and the first audio byte sent, with the time to first audio between them. The
@@ -244,7 +247,9 @@ class VoiceSession:
         if reply is not None and not reply.finished:
             if reply.task is not None:
                 reply.task.cancel()
-            await self._finish(reply, "interrupted")
+            # The page already showed the switch's words, and POST /turn or a reconnect may be using that
+            # floor without having saved a turn yet, so a closing socket undoes no switch.
+            await self._finish(reply, "interrupted", undo=False)
         for task in list(self._tasks):
             task.cancel()
         stt, self.stt = self.stt, None
@@ -475,11 +480,12 @@ class VoiceSession:
             self._prefix_speech_end = reply.timing.speech_end
         await self._finish(reply, "continued")
 
-    async def _finish(self, reply: Reply, outcome: str, *, first: dict | None = None) -> None:
+    async def _finish(self, reply: Reply, outcome: str, *, first: dict | None = None, undo: bool = True) -> None:
         """End the turn. Everything up to the first await settles it: what the user heard, the undo, the
         saved turns and the hold. So any turn that starts after this one ends, on the socket or by POST
         /turn, starts from who really has the floor. Then the browser hears first (the interrupt or the
-        error), mock if a switch was undone, the metrics and reply_end."""
+        error), mock if a switch was undone, the metrics and reply_end. undo=False keeps any switch: the
+        closing socket passes it."""
         if reply.finished:
             return
         reply.finished = True
@@ -493,13 +499,15 @@ class VoiceSession:
             heard = []
         else:
             heard = reply.heard(clock.now())
-        # A switch counts only if the user heard at least part of its line. A reply undoes only its own
-        # switch, and only while nothing has built on it: that mock still has the floor, and no turn has been
-        # saved since. This reply's own turns are saved below, so any other came from a POST /turn on this
-        # session. Stepping out for a crisis stands even unheard: boundaries break role at once.
+        # A switch counts only if the user heard at least part of its line. On a live socket, a reply cut
+        # before that line undoes its own switch, unless the floor has moved on or a turn has been saved
+        # since. This reply's turns are saved below, so a turn saved since is another writer's, which may
+        # build on the switch. A writer still in flight hasn't saved yet, so a closing socket (undo=False)
+        # undoes nothing. Stepping out for a crisis stands even unheard: boundaries break role at once.
         switched = reply.switched_to
         undone = (
-            switched is not None and self.convo.mock is switched and len(self.convo.turns) == reply.turns_at_switch
+            undo and switched is not None and self.convo.mock is switched
+            and len(self.convo.turns) == reply.turns_at_switch
             and switched.last_step_out != "crisis" and not any(seg.switch for seg, _ in heard)
         )
         if undone:

@@ -2,6 +2,7 @@ import asyncio
 import logging
 import threading
 import time
+from contextlib import ExitStack
 from dataclasses import replace
 from datetime import datetime
 from uuid import UUID
@@ -863,15 +864,11 @@ def test_a_turn_queued_behind_a_post_turn_hand_off_starts_in_the_mock():
         app.state.runtime = None
 
 
-def test_a_switch_another_turn_has_built_on_stays_when_the_socket_closes(caplog):
+def test_a_switch_another_turn_has_built_on_stays_after_a_barge_in(caplog):
     caplog.set_level(logging.INFO, logger="app.voice.metrics")
-    memory = RecordingMemory()
-    # 0 opening, 1 the socket's cue, 2 its first question, 3 and 4 the interviewer answering POST /turn
-    chat = FakeChat([
-        OPENING, ["[mock: Sprout]"], ["Walk me through your background."], ["Okay. ", "Why Sprout?"],
-        ["Got it. ", "What drew you to analytics?"],
-    ])
-    rt = make_runtime(chat, memory=memory)
+    stt = FakeStt()
+    chat = FakeChat([OPENING, ["[mock: Sprout]"], ["Walk me through your background."], ["Okay. ", "Why Sprout?"]])
+    rt = make_runtime(chat, stt=stt, tuning=replace(FAST, playback_grace_s=2.0))  # the ticker can't end turn 2 first
     try:
         with shared_client(rt) as client:
             with client.websocket_connect("/ws", headers={"origin": ORIGIN}) as ws:
@@ -880,18 +877,93 @@ def test_a_switch_another_turn_has_built_on_stays_when_the_socket_closes(caplog)
                 ready, _ = wire.until("ready")
                 play(ws, wire, turn=1)
                 ws.send_json({"type": "user_text", "text": "Can we practice for Sprout?"})
-                wire.until("reply_end", turn=2)  # the handoff went out, but the page never says it played
+                wire.until("reply_end", turn=2)  # the handoff went out, and its switch line hasn't played
                 body = {"text": "I studied information management.", "session_id": ready["session_id"]}
                 answered = client.post("/turn", json=body, headers={"origin": ORIGIN}).text
-                assert '"role": "interviewer"' in answered  # POST /turn answered in that mock
-            deadline = time.monotonic() + 3  # the socket closed with turn 2's switch line unheard
+                assert '"role": "interviewer"' in answered  # POST /turn answered in that mock and saved its turns
+                stt.emit(interim("wait, one more thing"))  # a barge-in on the live socket
+                metrics, seen = wire.until("metrics", turn=2, outcome="interrupted")
+                assert metrics["switch"] == "mock_start" and not [m for m in seen if m["type"] == "mock"]
+        assert rt.registry.get(ready["session_id"]).mock.on is True
+        assert ":undone" not in caplog.text
+    finally:
+        app.state.runtime = None
+
+
+def test_a_post_turn_in_flight_keeps_the_switch_when_the_socket_closes(caplog):
+    caplog.set_level(logging.INFO, logger="app.voice.metrics")
+    memory = RecordingMemory()
+    # 0 opening, 1 the socket's cue, 2 its first question, 3 the in-flight POST /turn's interviewer, 4 the next one
+    chat = FakeChat(
+        [OPENING, ["[mock: Sprout]"], ["Walk me through your background."], ["Okay. ", "Why Sprout?"],
+         ["Got it. ", "What drew you to analytics?"]],
+        delay_before={3: 1.0},
+    )
+    rt = make_runtime(chat, memory=memory, tuning=replace(FAST, playback_grace_s=5.0))
+    answered = {}
+    try:
+        with shared_client(rt) as client:
+            with client.websocket_connect("/ws", headers={"origin": ORIGIN}) as ws:
+                ws.send_json({"type": "hello"})
+                wire = Wire(ws)
+                ready, _ = wire.until("ready")
+                play(ws, wire, turn=1)
+                ws.send_json({"type": "user_text", "text": "Can we practice for Sprout?"})
+                wire.until("reply_end", turn=2)  # the handoff went out, and its switch line hasn't played
+                body = {"text": "I studied information management.", "session_id": ready["session_id"]}
+                post = threading.Thread(
+                    target=lambda: answered.update(text=client.post("/turn", json=body, headers={"origin": ORIGIN}).text)
+                )
+                post.start()
+                deadline = time.monotonic() + 3
+                while len(chat.calls) < 4 and time.monotonic() < deadline:  # POST /turn is waiting on the interviewer
+                    time.sleep(0.01)
+            deadline = time.monotonic() + 3
             while not memory.closed and time.monotonic() < deadline:
                 time.sleep(0.02)
-            assert memory.closed == [ready["session_id"]]
+            assert memory.closed and post.is_alive()  # the socket closed while POST /turn was still in flight
+            post.join(5)
+            assert '"role": "interviewer"' in answered["text"]  # it finished as the interviewer
             body = {"text": "Their analytics team.", "session_id": ready["session_id"]}
             assert client.post("/turn", json=body, headers={"origin": ORIGIN}).status_code == 200
         assert rt.registry.get(ready["session_id"]).mock.on is True
         assert ":undone" not in caplog.text
         assert "running a mock interview" in chat.calls[4][0]["content"]  # the next POST /turn still reaches the interviewer
+    finally:
+        app.state.runtime = None
+
+
+def test_a_reconnect_shown_the_interviewer_keeps_it_when_the_old_socket_closes(caplog):
+    caplog.set_level(logging.INFO, logger="app.voice.metrics")
+    memory = RecordingMemory()
+    # 0 opening, 1 the old socket's cue, 2 its first question, 3 the new socket's next reply
+    chat = FakeChat([OPENING, ["[mock: Sprout]"], ["Walk me through your background."], ["Okay. ", "Why Sprout?"]])
+    rt = make_runtime(chat, memory=memory, tuning=replace(FAST, playback_grace_s=5.0))
+    try:
+        with shared_client(rt) as client, ExitStack() as old_socket:
+            ws = old_socket.enter_context(client.websocket_connect("/ws", headers={"origin": ORIGIN}))
+            ws.send_json({"type": "hello"})
+            wire = Wire(ws)
+            ready, _ = wire.until("ready")
+            play(ws, wire, turn=1)
+            ws.send_json({"type": "user_text", "text": "Can we practice for Sprout?"})
+            wire.until("reply_end", turn=2)  # the handoff went out, and its switch line hasn't played
+            with client.websocket_connect("/ws", headers={"origin": ORIGIN}) as new:
+                new.send_json({"type": "hello", "session_id": ready["session_id"]})
+                wire = Wire(new)
+                wire.until("ready")
+                shown, _ = wire.until("mock")
+                assert shown["on"] is True  # the reconnect is told the interviewer has the floor
+                old_socket.close()  # only now does the old socket close
+                deadline = time.monotonic() + 3
+                while not memory.closed and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                assert memory.closed == [ready["session_id"]]
+                new.send_json({"type": "user_text", "text": "I studied information management."})
+                _, seen = wire.until("reply_end")
+                assert not [m for m in seen if m["type"] == "mock"]
+        assert rt.registry.get(ready["session_id"]).mock.on is True
+        assert ":undone" not in caplog.text
+        assert "running a mock interview" in chat.calls[3][0]["content"]  # the new socket's reply came from the interviewer
     finally:
         app.state.runtime = None
