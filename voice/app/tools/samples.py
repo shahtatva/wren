@@ -65,7 +65,9 @@ _PRAISE = re.compile(
     r"\b(?:great|good|nice|solid|strong|excellent|fantastic|wonderful|impressive)"
     r" (?:answer|job|point|example|story|response|start)\b"
     r"|\b(?:well done|nicely done|well said|nicely put|love that)\b"
-    r"|\b(?:excellent|fantastic|wonderful|awesome|brilliant|perfect|impressive)[.!]",
+    r"|\b(?:excellent|fantastic|wonderful|awesome|brilliant|perfect|impressive)[.!]"
+    # The interviewer card rules out even "great" and "solid", so these count anywhere in role. Not a greeting.
+    r"|\b(?:great|solid|strong|impressive)\b|\bnice\b(?!\s+(?:to\s+)?meet)",
     re.IGNORECASE,
 )
 
@@ -75,7 +77,8 @@ def check(reply: str, *, debrief: bool = False, in_role: bool = False) -> list[s
 
     A reply runs long past three sentences or forty-five words (fifteen a sentence). A
     debrief gets six sentences and ninety words. Praise is a problem only in role: the
-    interviewer saves feedback for the debrief.
+    interviewer saves feedback for the debrief. In role, great, solid, nice, strong and
+    impressive count anywhere, so "a strong fit" is flagged too: read the reply.
     """
     sentences = [s for s in _SENTENCE_BREAK.split(reply.strip()) if s]
     max_sentences = 6 if debrief else 3
@@ -120,6 +123,7 @@ class SampleReply:
     switch: str | None = None  # mock_start, mock_resume or step_out:<why>, when the turn moved the floor
     parts: tuple[tuple[str, str], ...] = ()  # (who, words) for each speaker in turn: Wren, or the interviewer's name
     cues: tuple[str, ...] = ()  # the cues the calls wrote, never spoken: [mock: company], [mock] or [step out]
+    finish: str | None = None  # why the turn's last call ended: "length" means it hit the token cap
 
 
 def _noted(chat: Chat, calls: list[tuple[str | None, str]]) -> Chat:
@@ -173,6 +177,7 @@ def _sample(
     cues = tuple(cue for _, wrote in calls if (cue := _cue(wrote)))
     return SampleReply(
         scenario, line, text, len(text.split()), flags, model, timing.reply_repair, timing.switch, parts, cues,
+        timing.finish_reason,
     )
 
 
@@ -218,6 +223,7 @@ def summarize(replies: list[SampleReply]) -> dict:
         "two_questions": sum("two questions" in r.flags for r in replies),
         "flagged": sum(bool(r.flags) for r in replies),
         "gave_up": sum(r.repair == "gave_up" for r in replies),
+        "hit_cap": sum(r.finish == "length" for r in replies),
         "switches": dict(Counter(r.switch for r in replies if r.switch)),
     }
 
@@ -378,6 +384,8 @@ def show(reply: SampleReply) -> None:
     notes = [f"{reply.words} words", ", ".join(reply.flags) or "ok", reply.model or "no model"]
     if reply.repair:
         notes.append(f"repair: {reply.repair}")
+    if reply.finish == "length":
+        notes.append("hit the token cap")
     notes += [f"cue {cue}" for cue in reply.cues]
     if reply.switch:
         notes.append(f"switch: {reply.switch}")
@@ -386,7 +394,7 @@ def show(reply: SampleReply) -> None:
 
 
 async def play(scenarios: list[Scenario], runs: int, pause_s: float) -> list[SampleReply]:
-    from app.chat import make_chat  # here, not at the top: loading the Groq and Gemini clients takes seconds
+    from app.chat import make_chat  # here, not at the top, so the command-line test can swap in a fake module
     from app.config import load_settings, load_voice_settings
 
     tuning = Tuning()
@@ -427,7 +435,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"{total} replies. Words: median {summary['median_words']}, max {summary['max_words']}. "
         f"Two questions: {summary['two_questions']} of {total}. Flagged: {summary['flagged']} of {total}. "
-        f"Gave up: {summary['gave_up']} of {total}."
+        f"Gave up: {summary['gave_up']} of {total}. Hit the token cap: {summary['hit_cap']} of {total}."
     )
     print("Switches: " + (", ".join(f"{switch} x{n}" for switch, n in summary["switches"].items()) or "none"))
     print("Models: " + ", ".join(f"{model} x{n}" for model, n in Counter(r.model for r in replies).most_common()))

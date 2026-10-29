@@ -74,20 +74,20 @@ FIRST_QUESTION_LINE = "Let's start simple. Walk me through your background."
 
 # What Wren does with the mock in its prompt (debrief.md), by why it took the floor back this turn.
 DEBRIEF = (  # done, or stop after an answer
-    "You've just stepped out. Debrief it now in short spoken sentences, six at most, even if their last words were"
-    " a question for the interviewer. Say what landed and what drifted in this mock, using their actual words or"
-    " stories from it. Give one fix. If it fits, say a friend could run the next one with them. End by asking how"
-    " it felt. Your boundaries come first: if what they just said needs one of them, like a crisis, answer that as"
-    " yourself instead, and skip the debrief."
+    "You've just stepped out. Debrief it now in short spoken sentences, six at most, even if their last words asked"
+    " about the job. Say what landed and what drifted in this mock, using their actual words or stories from it."
+    " Give one fix. If it fits, say a friend could run the next one with them. End by asking how it felt. Your"
+    " boundaries come first: if what they just said needs one of them, like a crisis, answer that as yourself"
+    " instead, and skip the debrief."
 )
 NOTHING_YET = (  # stop before any answer
     "They stopped before answering anything, so there's nothing to debrief yet. Ask what they'd like to do."
 )
 HOLD = (  # pause, or the interviewer's cue mid-interview
     "You stepped out because of what they just said. Answer that as yourself, and your boundaries come first."
-    " Then hold the debrief, and offer to pick the interview back up unless a boundary rules it out. Debrief now"
-    " only if they asked to stop or end the interview: what landed, what drifted, and one fix, then ask how it"
-    " felt."
+    " Then hold the debrief, and offer to pick the interview back up unless a boundary rules it out. Don't ask the"
+    " interviewer's questions yourself. Debrief now only if they asked to stop or end the interview: what landed,"
+    " what drifted, and one fix, then ask how it felt."
 )
 AI_ASKED = (
     "You stepped out because they asked whether you're an AI or a person. Say plainly that you're an AI, then"
@@ -99,7 +99,7 @@ CRISIS = (
 )
 AFTER = (  # a later turn, while the mock's lines are recent
     "If they ask about it, use this. If they want feedback you haven't given yet, debrief it: what landed, what"
-    " drifted, and one fix. If they want to go on with it, write only [mock]."
+    " drifted, and one fix. If they want to go on with it and no boundary rules it out, write only [mock: company]."
 )
 # What later turns see of a mock Wren stepped out of for a crisis, in place of the mock itself.
 PAUSED_AFTER_CRISIS = (
@@ -332,7 +332,7 @@ def _next_step(asked: int, total: int, *, resumed: bool = False) -> str:
     if asked < total - 1:
         return f"Ask your next question. You've asked {asked} of {total}."
     if asked == total - 1:
-        return "Ask your last question: what questions do they have for you?"
+        return 'Ask your last question, exactly this: "What questions do you have for me?"'
     return (
         "You've asked all your questions. If they asked you anything, answer in a sentence or two, in general terms."
         " Then thank them in one short sentence and write [step out]. Don't ask anything more."

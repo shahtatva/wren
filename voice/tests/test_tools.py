@@ -151,6 +151,24 @@ def test_check_flags_brackets_and_three_sentences_that_run_long():
     assert "long" not in check(" ".join([" ".join(["word"] * 14) + "."] * 3))  # forty-two words
 
 
+def test_check_flags_praise_words_in_role_but_not_a_greeting():
+    for reply in ("That's a solid result. Why Sprout?", "Great, Maya. Walk me through your background?",
+                  "Nice. What drew you to sales?", "That's strong. Why now?", "Impressive. What came next?"):
+        assert "praise in role" in check(reply, in_role=True), reply
+        assert "praise in role" not in check(reply), reply
+    assert "praise in role" not in check("Nice to meet you, Maya. Walk me through your background?", in_role=True)
+
+
+def test_a_reply_that_hit_the_token_cap_says_so_even_when_it_ends_on_a_sentence():
+    async def chat(messages, timing, *, retry=False, max_tokens=None):
+        timing.model, timing.finish_reason = "fake-chat", "length"
+        yield "Your opener landed."
+
+    [reply] = asyncio.run(run_scenario(Scenario("cap", "checkin", maya, ("Hi.",)), chat, Tuning()))
+    assert (reply.text, reply.repair, reply.finish) == ("Your opener landed.", None, "length")
+    assert summarize_replies([reply])["hit_cap"] == 1
+
+
 def test_a_scenario_runs_through_run_turn():
     scenario = Scenario("hi", "checkin", lambda: Conversation("s", USER, "checkin", "UTC"), ("Hi there.",))
     replies = asyncio.run(run_scenario(scenario, FakeChat([["Hey. ", "How's the search going?"]]), Tuning()))
@@ -302,6 +320,7 @@ def test_the_command_line_plays_the_chosen_scenarios_with_its_pause(monkeypatch,
     out = capsys.readouterr().out
     assert "x/two, run 2 of 2" in out and "other" not in out and "y/y" not in out
     assert "4 replies." in out and "Gave up: 0 of 4." in out and "Switches: none" in out and "Models: fake-chat x4" in out
+    assert "Hit the token cap: 0 of 4." in out
     with pytest.raises(SystemExit):
         samples.main(["--group", "y", "--scenario", "two"])  # the filters leave nothing to play
 

@@ -434,13 +434,19 @@ def test_interviewer_turns_skip_retrieval_and_see_only_the_mock():
 
 @pytest.mark.parametrize("asked, step", [
     (2, "Ask your next question. You've asked 2 of 4."),
-    (3, "Ask your last question"),
+    (3, 'Ask your last question, exactly this: "What questions do you have for me?"'),  # samples: asked 0 of 4
     (4, "You've asked all your questions"),
 ])
 def test_the_interviewer_knows_where_it_is(asked, step):
     chat = ScriptedChat(["Okay. Next one?"])
     asyncio.run(_collect(run_turn(in_mock(asked), "My answer.", retrieve=_no_memories, chat=chat, timing=TurnTiming(5, "mock", "voice"))))
     assert step in chat.messages[0][0]["content"]
+
+
+def test_the_interviewer_card_rules_out_praise_and_joined_questions():
+    system = build_interviewer_messages(in_mock(2), "My answer.", Tuning())[0]["content"]
+    assert '- No coaching, praise or feedback, not even "great" or "solid". That\'s for the debrief.' in system
+    assert '- Ask one question per turn, then stop and let them answer. Never join two questions with "and" or "or".' in system
 
 
 def test_the_interviewer_card_fills_in_what_isnt_known():
@@ -557,6 +563,7 @@ def test_the_interviewers_closing_cue_leads_into_the_debrief():
     assert out[:3] == ["Thanks, that's everything I had.", "Stepping out.", "It's me again."]
     assert out[0].mock == 1 and out[1].mock is None and timing.switch == "step_out:done"
     assert "Debrief it now" in chat.messages[1][0]["content"] and "Dana: Thanks, that's everything I had." in chat.messages[1][0]["content"]
+    assert "six at most, even if their last words asked about the job." in chat.messages[1][0]["content"]
 
 
 def test_a_step_out_cue_mid_interview_holds_the_debrief():
@@ -598,6 +605,9 @@ def test_wren_keeps_the_last_mock_in_view_for_a_few_turns():
     convo.mock = replace(SPROUT_MOCK, on=False)
     messages = build_messages(convo, "What about my second answer?", [], NOW, Tuning())
     assert "Candidate: answer 1" in messages[0]["content"] and "If they ask about it, use this" in messages[0]["content"]
+    assert messages[0]["content"].rstrip().endswith(
+        "If they want to go on with it and no boundary rules it out, write only [mock: company]."
+    )
     assert not any("Question 2?" in m["content"] for m in messages[1:])  # the mock's lines appear once, in the block
     for i in range(6):
         convo.add("user" if i % 2 == 0 else "wren", f"later {i}")
@@ -619,6 +629,8 @@ def test_a_pause_holds_the_debrief_and_can_pick_back_up():
     convo = in_mock(2)
     _, chat, timing, _ = step_out_turn(convo, "Wren, can I ask you something?", ["Of course. What's on your mind?"])
     assert timing.switch == "step_out:pause" and "hold the debrief" in chat.messages[0][0]["content"] and convo.mock.resumable
+    # In the samples Wren asked the interviewer's questions itself, in its own voice, with no switch.
+    assert "back up unless a boundary rules it out. Don't ask the interviewer's questions yourself." in chat.messages[0][0]["content"]
 
 
 @pytest.mark.parametrize("cue, mock_id, switch", [
