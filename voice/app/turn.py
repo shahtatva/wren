@@ -24,9 +24,10 @@ and ends the mock for the interviewer once it runs two turns past its questions.
 can also hand the floor back by writing [step out]. Either way Wren says "Stepping out. It's me
 again." and answers as itself, with the mock word for word in its prompt and an instruction that
 fits why it stepped out: debrief it, hold the debrief, say it's an AI, or answer a crisis with
-no debrief. Unless the interview was done or they asked to stop it, Wren's next [mock] cue picks
-it back up. The last mock stays in Wren's prompt while any of its lines are among the recent turns,
-unless Wren stepped out for a crisis.
+no debrief. That reply gets more room than usual (Tuning.max_step_out_tokens). Unless the interview
+was done or they asked to stop it, Wren's next [mock] cue picks it back up. The last mock stays in
+Wren's prompt while any of its lines are among the recent turns. After a crisis, later turns see
+only that it's paused, so picking it back up stays theirs to ask for.
 
 The stages come in as callables, like retrieve()'s, so the server, evals and tests can
 each wire their own. Retrieval failing never fails the turn: Wren answers without memories.
@@ -100,6 +101,11 @@ AFTER = (  # a later turn, while the mock's lines are recent
     "If they ask about it, use this. If they want feedback you haven't given yet, debrief it: what landed, what"
     " drifted, and one fix. If they want to go on with it, write only [mock]."
 )
+# What later turns see of a mock Wren stepped out of for a crisis, in place of the mock itself.
+PAUSED_AFTER_CRISIS = (
+    "A mock interview with {name} is paused. Don't bring it up yourself. If they say they're safe and want to go"
+    " back to it, write only [mock]."
+)
 _INSTRUCTIONS = {"done": DEBRIEF, "stop": DEBRIEF, "pause": HOLD, "cue": HOLD, "ai": AI_ASKED, "crisis": CRISIS}
 _RESUMABLE = ("pause", "cue", "ai", "crisis")  # done and stop end the mock
 
@@ -113,9 +119,12 @@ Retrieve = Callable[[str], Awaitable[Retrieved]]
 
 
 class Chat(Protocol):
-    """Streams the reply. retry=True is the second ask, after a reply with no whole sentence."""
+    """Streams the reply. retry=True is the second ask, after a reply with no whole sentence. max_tokens, when
+    given, replaces the usual cap on the reply."""
 
-    def __call__(self, messages: list[dict], timing: TurnTiming, *, retry: bool = False) -> AsyncIterator[str]: ...
+    def __call__(
+        self, messages: list[dict], timing: TurnTiming, *, retry: bool = False, max_tokens: int | None = None
+    ) -> AsyncIterator[str]: ...
 
 
 class Spoken(str):
@@ -242,7 +251,7 @@ def _mock_turns(convo: Conversation, mock: Mock) -> list[HistoryTurn]:
 def _shown_mock(convo: Conversation, history: list[HistoryTurn], step_out: str | None) -> Mock | None:
     """The mock Wren sees word for word: the one it just stepped out of, or the last one while any of its
     lines are among the recent turns. After a crisis, only the turn that stepped out sees it: practice waits
-    until they say they're safe, so later turns don't offer feedback."""
+    until they say they're safe, so later turns don't offer feedback. They see only that it's paused."""
     mock = convo.mock
     if mock is None or (step_out is None and mock.last_step_out == "crisis"):
         return None
@@ -266,6 +275,17 @@ def _mock_block(convo: Conversation, mock: Mock, step_out: str | None, unsaved: 
     )
 
 
+def _mock_slot(convo: Conversation, shown: Mock | None, step_out: str | None, unsaved: Sequence[HistoryTurn]) -> str:
+    """What fills conversation.md's {mock}: the shown mock word for word, or after a crisis, a note that the
+    mock is paused, with no transcript and no feedback, so picking it back up stays theirs to ask for."""
+    if shown is not None:
+        return _mock_block(convo, shown, step_out, unsaved)
+    mock = convo.mock
+    if step_out is None and mock is not None and mock.last_step_out == "crisis":
+        return f"\nThe mock interview\n{PAUSED_AFTER_CRISIS.format(name=mock.name)}\n"
+    return ""
+
+
 def build_messages(
     convo: Conversation, user_text: str | None, hits: list[SearchHit], now_utc: datetime, tuning: Tuning, *,
     step_out: str | None = None, unsaved: Sequence[HistoryTurn] = (),
@@ -286,7 +306,7 @@ def build_messages(
         pipeline_days=tuning.pipeline_days,
         pipeline=_pipeline(convo.background.pipeline, now_local.date()),
         memories=_memories(hits),
-        mock="" if shown is None else _mock_block(convo, shown, step_out, unsaved),
+        mock=_mock_slot(convo, shown, step_out, unsaved),
     )
     messages = [{"role": "system", "content": system}]
     messages += [_message(turn, mark_role=True) for turn in history]
@@ -429,7 +449,10 @@ async def _wren(
         cues, fallback = None, RETRY_LINE
     else:
         cues, fallback = CueFilter(), RETRY_LINE
-    async with aclosing(_reply(messages, chat, timing, cues, mock=None, fallback=fallback)) as reply:
+    # A reply after any step-out gets more room than the usual cap: debriefs ran into it and lost their fix.
+    max_tokens = None if step_out is None else tuning.max_step_out_tokens
+    reply = _reply(messages, chat, timing, cues, mock=None, fallback=fallback, max_tokens=max_tokens)
+    async with aclosing(reply) as reply:
         async for spoken in reply:
             yield spoken
     if cues is not None and cues.cue is not None:
@@ -523,7 +546,8 @@ _COPIED_BACK = ("model", "chat_fallback", "finish_reason", "completion_tokens", 
 
 
 async def _reply(
-    messages: list[dict], chat: Chat, timing: TurnTiming, cues: CueFilter | None, *, mock: int | None, fallback: str
+    messages: list[dict], chat: Chat, timing: TurnTiming, cues: CueFilter | None, *, mock: int | None, fallback: str,
+    max_tokens: int | None = None,
 ) -> AsyncIterator[Spoken]:
     """One model call's reply, as segments spoken by Wren (mock=None) or by that mock's interviewer.
 
@@ -532,6 +556,7 @@ async def _reply(
     spoken, and it ends the reply. Pass cues when the caller acts on its speaker's cue, [mock] for
     Wren or [step out] for the interviewer: that cue counts as a whole reply, and cues.cue holds it
     afterwards. Any other cue is dropped, so a reply that was only a dropped cue is asked for again.
+    max_tokens, when given, replaces the chat's usual cap for every attempt.
 
     The call that runs before anything is spoken (run_turn sets timing.first_segment at the first
     segment) writes the turn's timing. A later one writes a scratch timing and copies back what it
@@ -539,6 +564,7 @@ async def _reply(
     """
     own_cue = "mock" if mock is None else "step_out"  # Wren hands the floor over, the interviewer hands it back
     found = cues if cues is not None else CueFilter()
+    cap = {} if max_tokens is None else {"max_tokens": max_tokens}  # like retry, passed only when it isn't the usual
     call = timing if timing.first_segment is None else TurnTiming(timing.turn, timing.mode, timing.input)
     # rough, no tokenizer for every model
     timing.context_tokens = (timing.context_tokens or 0) + sum(len(m["content"]) for m in messages) // 4
@@ -547,7 +573,7 @@ async def _reply(
         for attempt in range(2):
             found.reset()
             spoke = False
-            stream = chat(messages, call, retry=True) if attempt else chat(messages, call)
+            stream = chat(messages, call, retry=True, **cap) if attempt else chat(messages, call, **cap)
             async with aclosing(_whole_sentences(_until_cue(stream, found), call)) as segments:
                 async for text in segments:
                     spoke = True

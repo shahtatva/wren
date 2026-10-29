@@ -126,10 +126,13 @@ def _noted(chat: Chat, calls: list[tuple[str | None, str]]) -> Chat:
     """The same chat, noting each call's model and everything it wrote, cues included. The turn's own
     timing keeps only the last call's model."""
 
-    async def noted(messages: list[dict], timing: TurnTiming, *, retry: bool = False) -> AsyncIterator[str]:
+    async def noted(
+        messages: list[dict], timing: TurnTiming, *, retry: bool = False, max_tokens: int | None = None
+    ) -> AsyncIterator[str]:
         wrote: list[str] = []
+        cap = {} if max_tokens is None else {"max_tokens": max_tokens}
         try:
-            async with aclosing(chat(messages, timing, retry=retry)) as deltas:
+            async with aclosing(chat(messages, timing, retry=retry, **cap)) as deltas:
                 async for delta in deltas:
                     wrote.append(delta)
                     yield delta

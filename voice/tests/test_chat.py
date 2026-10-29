@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.chat import make_chat
+from app.chat import REASONING_TOKENS, make_chat
 from app.config import Settings, VoiceSettings
 from app.voice.metrics import TurnTiming
 
@@ -221,6 +221,28 @@ def test_gpt_oss_gets_room_to_reason_on_top_of_the_reply_cap():
     chat = make_chat(SETTINGS, VOICE_120B, max_tokens=400, groq=groq, gemini=FakeGemini([]))
     asyncio.run(collect(chat, TurnTiming(1, "checkin", "text")))
     assert groq.calls[0]["max_completion_tokens"] == 800
+
+
+def test_a_call_can_raise_the_reply_cap_and_gpt_oss_still_gets_room_to_reason():
+    groq = FakeGroq(FakeGroqStream(["Hi."]))
+    chat = make_chat(SETTINGS, VOICE_120B, max_tokens=400, groq=groq, gemini=FakeGemini([]))
+
+    async def step_out():
+        return [d async for d in chat(MESSAGES, TurnTiming(1, "checkin", "text"), max_tokens=800)]
+
+    assert asyncio.run(step_out()) == ["Hi."]
+    assert groq.calls[0]["max_completion_tokens"] == 800 + REASONING_TOKENS
+
+
+def test_a_raised_cap_reaches_the_gemini_fallback_too():
+    gemini = FakeGemini(["Okay."])
+    chat = make_chat(SETTINGS, VOICE, max_tokens=400, groq=FakeGroq(error=RateLimited("429")), gemini=gemini)
+
+    async def step_out():
+        return [d async for d in chat(MESSAGES, TurnTiming(1, "checkin", "text"), max_tokens=800)]
+
+    assert asyncio.run(step_out()) == ["Okay."]
+    assert gemini.calls[0]["config"].max_output_tokens == 800
 
 
 def test_a_retry_asks_gpt_oss_with_low_reasoning():

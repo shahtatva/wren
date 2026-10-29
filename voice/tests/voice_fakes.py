@@ -103,11 +103,12 @@ class FakeChat:
     def __init__(self, replies, hang_before=(), hang_after=None, delay_before=None):
         self.replies, self.hang_before, self.hang_after = list(replies), set(hang_before), dict(hang_after or {})
         self.delay_before = dict(delay_before or {})
-        self.calls, self.cancelled = [], []
+        self.calls, self.cancelled, self.max_tokens = [], [], []  # max_tokens: each call's cap, None for the usual
 
-    async def __call__(self, messages, timing, *, retry=False):
+    async def __call__(self, messages, timing, *, retry=False, max_tokens=None):
         index = len(self.calls)
         self.calls.append(messages)
+        self.max_tokens.append(max_tokens)
         timing.model = "fake-chat"
         try:
             if index in self.hang_before:

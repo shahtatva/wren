@@ -22,6 +22,7 @@ class Tuning:
     pipeline_days: int = 7
     mock_questions: int = 4  # an interviewer's main questions; the last is "what questions do you have for me?"
     max_reply_tokens: int = 400
+    max_step_out_tokens: int = 800  # the reply after a step-out: debriefs ran into the usual cap and lost their fix
     playback_grace_s: float = 3.0  # finish a reply this long after its audio should have ended, played or not
     echo_tail_s: float = 2.0  # after Wren stops, drop transcripts made only of Wren's words (speaker tail)
 

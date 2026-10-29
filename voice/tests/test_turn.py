@@ -12,6 +12,7 @@ from app.mock import Mock, Target
 from app.turn import (
     INTERVIEW_RESUME,
     INTERVIEW_START,
+    PAUSED_AFTER_CRISIS,
     build_interviewer_messages,
     build_messages,
     ends_a_sentence,
@@ -87,10 +88,10 @@ async def _collect(gen):
 
 class FakeChat:
     def __init__(self, deltas):
-        self.deltas, self.messages = deltas, None
+        self.deltas, self.messages, self.max_tokens = deltas, None, None
 
-    async def __call__(self, messages, timing):
-        self.messages = messages
+    async def __call__(self, messages, timing, *, max_tokens=None):
+        self.messages, self.max_tokens = messages, max_tokens
         timing.model = "fake-model"
         for d in self.deltas:
             if timing.llm_first_token is None:
@@ -207,13 +208,14 @@ async def _no_memories(text):
 
 class ScriptedChat:
     def __init__(self, *replies):
-        self.replies, self.calls, self.retries = list(replies), 0, []
+        self.replies, self.calls, self.retries, self.max_tokens = list(replies), 0, [], []
         self.messages, self.timings = [], []  # each call's messages and timing object
 
-    async def __call__(self, messages, timing, *, retry=False):
+    async def __call__(self, messages, timing, *, retry=False, max_tokens=None):
         reply = self.replies[self.calls]
         self.calls += 1
         self.retries.append(retry)
+        self.max_tokens.append(max_tokens)
         self.messages.append(messages)
         self.timings.append(timing)
         timing.model = "fake-model"
@@ -695,15 +697,42 @@ def test_a_pickup_that_fails_twice_asks_its_last_question_again(mock_lines, line
     assert convo.mock.on and convo.mock.last_step_out is None
 
 
-def test_after_a_crisis_the_mock_leaves_wrens_prompt():
+def test_after_a_crisis_wren_sees_only_that_the_mock_is_paused_and_can_pick_it_back_up():
     convo = in_mock(2)
-    step_out_turn(convo, "I keep thinking about killing myself.", ["I'm really glad you told me."])
+    _, chat, _, _ = step_out_turn(convo, "I keep thinking about killing myself.", ["I'm really glad you told me."])
+    assert "is paused" not in chat.messages[0][0]["content"]  # the turn that stepped out shows the mock, with CRISIS
     convo.add("user", "I keep thinking about killing myself.", mock=1)
     convo.add("wren", "Stepping out. It's me again. I'm really glad you told me.")
     messages = build_messages(convo, "Thanks. I'm safe now.", [], NOW, Tuning())
-    assert "The mock interview" not in messages[0]["content"]
+    system = messages[0]["content"]
+    assert system.rstrip().endswith("\nThe mock interview\n" + PAUSED_AFTER_CRISIS.format(name="Dana"))
+    assert "Word for word" not in system and "If they ask about it" not in system  # no transcript, no feedback
     history = "\n".join(m["content"] for m in messages[1:])
     assert "I keep thinking about killing myself." in history and "[As the interviewer] Question 2?" in history
+    chat, timing = ScriptedChat(["[mock]"], ["Why Sprout?"]), TurnTiming(9, "checkin", "voice")
+    later = run_turn(convo, "I'm safe now. Can we keep going?", retrieve=_no_memories, chat=chat, timing=timing)
+    out = asyncio.run(_collect(later))
+    assert out[0] == "Okay, stepping back into role." and timing.switch == "mock_resume"
+    assert (convo.mock.id, convo.mock.on, convo.mock.last_step_out) == (1, True, None)
+    assert "is paused" not in build_messages(convo, "hi", [], NOW, Tuning())[0]["content"]
+
+
+def test_a_reply_after_any_step_out_gets_the_step_out_token_budget():
+    budget = Tuning().max_step_out_tokens
+    assert budget == 800
+    for text in ("Okay, let's stop there.", "I keep thinking about killing myself.", "Are you a bot?"):
+        _, chat, _, _ = step_out_turn(in_mock(3), text, ["Okay."])
+        assert chat.max_tokens == [budget], text
+    # The interviewer's own call keeps the usual cap. Wren's reply after its cue gets the budget, retries included.
+    replies = (["Thanks for your time. [step out]"], ["[mock]"], ["Okay."])
+    _, chat, _, _ = step_out_turn(in_mock(4), "No questions from me.", *replies)
+    assert chat.max_tokens == [None, budget, budget] and chat.retries == [False, False, True]
+
+
+def test_an_ordinary_reply_keeps_the_usual_cap():
+    chat = ScriptedChat(["Sprout's tomorrow at eleven."])
+    turn_out(chat, TurnTiming(3, "checkin", "voice"))
+    assert chat.max_tokens == [None]
 
 
 def test_the_interviewer_card_talks_for_the_ear():

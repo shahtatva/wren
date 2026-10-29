@@ -66,16 +66,20 @@ def make_chat(
     settings: Settings, voice: VoiceSettings, *, max_tokens: int = 400, groq=None, gemini=None,
     first_token_s: float = CHAT_FIRST_TOKEN_S,
 ) -> Chat:
+    """max_tokens caps each reply, unless a call passes its own (a step-out reply gets more room)."""
     groq = groq or AsyncGroq(api_key=settings.groq_api_key, max_retries=0, timeout=GROQ_TIMEOUT_S)
     gemini = gemini or gemini_client(settings)
     groq_models = [voice.groq_chat_model]
     if voice.groq_chat_fallback_model and voice.groq_chat_fallback_model != voice.groq_chat_model:
         groq_models.append(voice.groq_chat_fallback_model)
     gemini_models = voice.gemini_chat_models or (settings.gemini_flash_model,)
+    usual_cap = max_tokens
 
-    async def groq_deltas(model: str, messages: list[dict], timing: TurnTiming, retry: bool) -> AsyncIterator[str]:
+    async def groq_deltas(
+        model: str, messages: list[dict], timing: TurnTiming, retry: bool, cap: int
+    ) -> AsyncIterator[str]:
         stream = await groq.chat.completions.create(
-            model=model, messages=messages, stream=True, **_groq_options(model, max_tokens, retry),
+            model=model, messages=messages, stream=True, **_groq_options(model, cap, retry),
         )
         try:
             async for chunk in stream:
@@ -89,20 +93,23 @@ def make_chat(
         finally:
             await stream.close()
 
-    async def gemini_deltas(model: str, messages: list[dict]) -> AsyncIterator[str]:
+    async def gemini_deltas(model: str, messages: list[dict], cap: int) -> AsyncIterator[str]:
         system, contents = _gemini_request(messages)
         stream = await gemini.aio.models.generate_content_stream(
             model=model,
             contents=contents,
-            config=types.GenerateContentConfig(system_instruction=system, max_output_tokens=max_tokens),
+            config=types.GenerateContentConfig(system_instruction=system, max_output_tokens=cap),
         )
         async for chunk in stream:
             if chunk.text:
                 yield chunk.text
 
-    async def chat(messages: list[dict], timing: TurnTiming, *, retry: bool = False) -> AsyncIterator[str]:
-        sources = [(m, groq_deltas(m, messages, timing, retry)) for m in groq_models]
-        sources += [(m, gemini_deltas(m, messages)) for m in gemini_models]
+    async def chat(
+        messages: list[dict], timing: TurnTiming, *, retry: bool = False, max_tokens: int | None = None
+    ) -> AsyncIterator[str]:
+        cap = usual_cap if max_tokens is None else max_tokens
+        sources = [(m, groq_deltas(m, messages, timing, retry, cap)) for m in groq_models]
+        sources += [(m, gemini_deltas(m, messages, cap)) for m in gemini_models]
         last_error: Exception | None = None
         for model, source in sources:
             try:

@@ -203,8 +203,9 @@ def test_a_mock_keeps_its_turns_as_post_turn_does_and_each_speaker_is_checked_on
     # A stop debriefs: six sentences are a debrief's to use, and the scripted "Stepping out. It's me again." don't count.
     assert stop.parts == (("Wren", f"Stepping out. It's me again. {debrief}"),)
     assert (stop.switch, stop.flags) == ("step_out:stop", [])
-    # The interviewer saw its own question, and the debrief saw the whole mock.
+    # The interviewer saw its own question, and the debrief saw the whole mock, with the step-out budget.
     assert [m["content"] for m in chat.calls[2][1:]] == [INTERVIEW_START, question, "I led the donor project."]
+    assert chat.max_tokens == [None, None, None, Tuning().max_step_out_tokens]
     mock = chat.calls[3][0]["content"]
     assert f"Candidate: I led the donor project.\n{name}: Great answer. Why Sprout?\nCandidate: Okay, let's stop there." in mock
 
