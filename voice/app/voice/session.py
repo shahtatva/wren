@@ -17,7 +17,8 @@ reaches the page with "role": "interviewer", and a "mock" message goes out befor
 line that hands over the floor. A reply that changes speaker saves as one turn per
 speaker, and the user's words belong to the mock if the interviewer had the floor. A
 switch counts only if the user heard at least part of its line: a reply cut before it,
-or dropped because the user kept talking, gives the floor back and tells the page.
+or dropped because the user kept talking, gives the floor back and tells the page. A
+reply only ever undoes its own switch, and only while that mock still has the floor.
 Stepping out for a crisis always stands, heard or not: boundaries break role at once.
 
 Every voice turn logs three timestamps: the end of the user's speech, the first LLM
@@ -80,7 +81,8 @@ class Reply:
     no: int
     user_text: str | None  # None for the opening line
     timing: TurnTiming
-    mock_before: Mock | None  # the conversation's mock when the turn started, to undo a switch nobody heard
+    mock_before: Mock | None  # the conversation's mock as the turn starts, read again under the lock
+    switched_to: Mock | None = None  # the mock this reply's own switch line put on the floor
     segments: list[Segment] = field(default_factory=list)
     task: asyncio.Task | None = None
     llm_done: bool = False
@@ -391,6 +393,8 @@ class VoiceSession:
         if self.reply is not None and not self.reply.finished:
             await self._interrupt(self.reply)
         self._turn = self._turn % 65535 + 1
+        # Provisional: _generate reads the mode and the mock again under the conversation lock, since a
+        # POST /turn on this session can move the floor first. Only a reply that never gets the lock keeps them.
         timing = TurnTiming(turn=self._turn, mode=self.convo.turn_mode, input=kind, speech_end=speech_end, committed=clock.now())
         reply = Reply(self._turn, user_text, timing, mock_before=self.convo.mock)
         self.reply, self.state = reply, "thinking"
@@ -403,12 +407,14 @@ class VoiceSession:
     async def _generate(self, reply: Reply) -> None:
         try:
             async with self.convo.lock:
+                reply.mock_before, reply.timing.mode = self.convo.mock, self.convo.turn_mode
                 async for spoken in run_turn(
                     self.convo, reply.user_text, retrieve=self._retrieve, chat=self.rt.chat,
                     timing=reply.timing, tuning=self.rt.tuning,
                 ):
-                    if spoken.switch:  # run_turn has just handed over the floor
-                        await self._send(mock_message(self.convo.mock))
+                    if spoken.switch:  # run_turn handed over the floor in this same step: this is its mock
+                        reply.switched_to = self.convo.mock
+                        await self._send(mock_message(reply.switched_to))
                     seg = Segment(len(reply.segments), spoken, mock=spoken.mock, switch=spoken.switch)
                     reply.segments.append(seg)
                     message = {"type": "segment", "turn": reply.no, "seg": seg.index, "text": spoken}
@@ -423,8 +429,7 @@ class VoiceSession:
             raise
         except Exception as e:
             logger.exception("reply failed: %s", e)
-            await self._send({"type": "error", "code": "reply_failed", "message": REPLY_FAILED})
-            await self._finish(reply, "failed")
+            await self._finish(reply, "failed", first={"type": "error", "code": "reply_failed", "message": REPLY_FAILED})
 
     async def _speak(self, reply: Reply, seg: Segment) -> None:
         if self._speaks:
@@ -456,8 +461,7 @@ class VoiceSession:
             return
         if reply.task is not None and not reply.task.done():
             reply.task.cancel()
-        await self._send({"type": "interrupt", "turn": reply.no})
-        await self._finish(reply, "interrupted")
+        await self._finish(reply, "interrupted", first={"type": "interrupt", "turn": reply.no})
 
     async def _continue(self, reply: Reply) -> None:
         """The user kept talking before Wren said anything: drop the reply, keep their words."""
@@ -470,7 +474,11 @@ class VoiceSession:
             self._prefix_speech_end = reply.timing.speech_end
         await self._finish(reply, "continued")
 
-    async def _finish(self, reply: Reply, outcome: str) -> None:
+    async def _finish(self, reply: Reply, outcome: str, *, first: dict | None = None) -> None:
+        """End the turn. Everything up to the first await settles it: what the user heard, the undo, the
+        saved turns and the hold. So any turn that starts after this one ends, on the socket or by POST
+        /turn, starts from who really has the floor. Then the browser hears first (the interrupt or the
+        error), mock if a switch was undone, the metrics and reply_end."""
         if reply.finished:
             return
         reply.finished = True
@@ -484,12 +492,14 @@ class VoiceSession:
             heard = []
         else:
             heard = reply.heard(clock.now())
-        # A switch counts only if the user heard at least part of its line. If they didn't, the floor
-        # goes back before any await, so no other turn starts from a speaker they never heard take over.
-        # Stepping out for a crisis stands even unheard: boundaries break role at once.
-        moved = self.convo.mock is not reply.mock_before
-        crisis = moved and self.convo.mock is not None and self.convo.mock.last_step_out == "crisis"
-        undone = moved and not crisis and not any(seg.switch for seg, _ in heard)
+        # A switch counts only if the user heard at least part of its line. A reply undoes only its own
+        # switch, and only while that mock still has the floor: a POST /turn on this session may have
+        # moved it since. Stepping out for a crisis stands even unheard: boundaries break role at once.
+        switched = reply.switched_to
+        undone = (
+            switched is not None and self.convo.mock is switched and switched.last_step_out != "crisis"
+            and not any(seg.switch for seg, _ in heard)
+        )
         if undone:
             self.convo.mock = reply.mock_before
             timing.switch = f"{timing.switch}:undone"  # the turn log shows it was tried, not that it happened
@@ -503,6 +513,8 @@ class VoiceSession:
         record = timing.record()
         if self.rt.turn_log is not None:
             self._spawn(self.rt.turn_log.write(self.convo.session_id, record), save=True)
+        if first is not None:
+            await self._send(first)
         if undone:
             await self._send(mock_message(self.convo.mock))
         await self._send({"type": "metrics", **record})

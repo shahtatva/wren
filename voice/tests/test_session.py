@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import threading
 import time
 from dataclasses import replace
 from datetime import datetime
@@ -787,3 +788,76 @@ def test_a_crisis_step_out_stands_even_if_its_line_was_never_heard():
         assert chat.calls[4][-1]["content"] == "Honestly I want to end my life.\nSorry, ignore that."  # Wren sees both
     finally:
         session.__exit__(None, None, None)
+
+
+def shared_client(runtime):
+    """One test client for the socket and POST /turn, so both run on the server's loop with one conversation."""
+    app.state.runtime = runtime
+    return TestClient(app, client=("127.0.0.1", 50000))
+
+
+@pytest.mark.parametrize("finish_by", ["ticker", "shutdown"])
+def test_a_reply_finishing_after_a_post_turn_hand_off_leaves_it_on(finish_by, caplog):
+    caplog.set_level(logging.INFO, logger="app.voice.metrics")
+    memory = RecordingMemory()
+    chat = FakeChat([OPENING, ["Hi there."], ["[mock: Sprout]"], ["Walk me through your background."]])
+    rt = make_runtime(chat, memory=memory, tuning=replace(FAST, playback_grace_s=2.0))
+    try:
+        with shared_client(rt) as client:
+            with client.websocket_connect("/ws", headers={"origin": ORIGIN}) as ws:
+                ws.send_json({"type": "hello"})
+                wire = Wire(ws)
+                ready, _ = wire.until("ready")
+                play(ws, wire, turn=1)
+                ws.send_json({"type": "user_text", "text": "Hi"})
+                wire.until("reply_end", turn=2)  # sent, but the page never says it played: it lost the socket
+                body = {"text": "Can we practice for Sprout?", "session_id": ready["session_id"]}
+                assert client.post("/turn", json=body, headers={"origin": ORIGIN}).status_code == 200
+                convo = rt.registry.get(ready["session_id"])
+                handed_off = convo.mock
+                assert handed_off is not None and handed_off.on
+                if finish_by == "ticker":  # turn 2 ends when its audio should have
+                    metrics, seen = wire.until("metrics", turn=2, outcome="complete", timeout=8)
+                    assert not [m for m in seen if m["type"] == "mock"] and metrics["switch"] is None
+            # leaving the socket ends the session, which finishes turn 2 if the ticker hasn't
+        deadline = time.monotonic() + 3
+        while not memory.closed and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert memory.closed == [ready["session_id"]]
+        assert convo.mock is handed_off  # still POST /turn's interviewer: turn 2 made no switch to undo
+        assert ":undone" not in caplog.text
+    finally:
+        app.state.runtime = None
+
+
+def test_a_turn_queued_behind_a_post_turn_hand_off_starts_in_the_mock():
+    memory = RecordingMemory()
+    chat = FakeChat(
+        [OPENING, ["[mock: Sprout]"], ["Walk me through your background."], ["Okay. ", "Why Sprout?"]],
+        delay_before={1: 0.5},  # POST /turn holds the conversation while the socket's turn comes in
+    )
+    rt = make_runtime(chat, memory=memory)
+    try:
+        with shared_client(rt) as client:
+            with client.websocket_connect("/ws", headers={"origin": ORIGIN}) as ws:
+                ws.send_json({"type": "hello"})
+                wire = Wire(ws)
+                ready, _ = wire.until("ready")
+                play(ws, wire, turn=1)
+                body = {"text": "Can we practice for Sprout?", "session_id": ready["session_id"]}
+                post = threading.Thread(target=lambda: client.post("/turn", json=body, headers={"origin": ORIGIN}))
+                post.start()
+                deadline = time.monotonic() + 3
+                while len(chat.calls) < 2 and time.monotonic() < deadline:  # POST /turn is asking Wren
+                    time.sleep(0.01)
+                ws.send_json({"type": "user_text", "text": "I studied information management."})
+                post.join(5)
+                segments = play(ws, wire, turn=2)
+        assert [s.get("role") for s in segments] == ["interviewer", "interviewer"]
+        assert "running a mock interview" in chat.calls[3][0]["content"]
+        user, answer = memory.appended[-2:]
+        assert (user["text"], user.get("mock")) == ("I studied information management.", 1)  # the interviewer's floor
+        assert answer["metrics"]["mode"] == "mock" and answer["metrics"]["switch"] is None
+        assert rt.registry.get(ready["session_id"]).mock.on is True
+    finally:
+        app.state.runtime = None
