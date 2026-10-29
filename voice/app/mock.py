@@ -29,6 +29,8 @@ from app.memory.types import PipelineEntry
 STEP_IN = ("Okay, stepping into role.",)
 STEP_BACK_IN = ("Okay, stepping back into role.",)
 STEP_OUT = ("Stepping out.", "It's me again.")
+# The interviewer's last question, spoken in role with no model call: the model kept skipping it.
+CLOSER = ("Thanks.", "What questions do you have for me?")
 # First names only, none over six letters, so they fit the page's speaker column.
 INTERVIEWER_NAMES = ("Dana", "Priya", "Marcus", "Elena", "Jordan", "Nadia", "Theo", "Grace", "Omar", "Lena")
 
