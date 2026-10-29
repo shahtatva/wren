@@ -75,14 +75,16 @@ class FakeStt:
 
 
 class FakeTts:
+    """`spoken` records every segment as (text, in_role): in_role is True when the interviewer says it."""
+
     def __init__(self, chunks=2, error=None):
         self.chunks, self.error, self.spoken, self.warmed = chunks, error, [], 0
 
     async def warm(self):
         self.warmed += 1
 
-    async def stream(self, text):
-        self.spoken.append(text)
+    async def stream(self, text, *, in_role=False):
+        self.spoken.append((text, in_role))
         if self.error:
             raise self.error
         for _ in range(self.chunks):

@@ -126,6 +126,26 @@ def test_stream_raises_on_http_error():
         asyncio.run(run())
 
 
+@pytest.mark.parametrize("interviewer, in_role, model", [
+    ("aura-2-orion-en", True, "aura-2-orion-en"), ("aura-2-orion-en", False, "aura-2-vesta-en"), (None, True, "aura-2-vesta-en"),
+])
+def test_role_segments_use_the_interviewer_voice(interviewer, in_role, model):
+    asked = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        asked.append(query(str(request.url))["model"])
+        return httpx.Response(200, content=b"\x00\x00")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    tts = AuraTts("dg-key", "aura-2-vesta-en", interviewer_model=interviewer, client=client)
+
+    async def speak():
+        return [pcm async for pcm in tts.stream("Why Sprout?", in_role=in_role)]
+
+    asyncio.run(speak())
+    assert asked == [model]
+
+
 def test_warm_opens_a_connection_without_speaking():
     paths = []
 

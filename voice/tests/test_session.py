@@ -181,7 +181,8 @@ def test_opening_then_voice_turn_streams_segments_audio_and_metrics():
         assert user == {"type": "user_turn", "turn": 2, "text": "Sprout moved to Friday."}
         reply = play(ws, wire, turn=2)
         assert [m["text"] for m in reply] == ["Friday works.", "Want to prep tonight?"]
-        assert tts.spoken == ["Hey Maya.", "How's the week going?", "Friday works.", "Want to prep tonight?"]
+        said = ["Hey Maya.", "How's the week going?", "Friday works.", "Want to prep tonight?"]
+        assert tts.spoken == [(text, False) for text in said]  # no mock: every line is in Wren's own voice
         assert chat.calls[1][-1] == {"role": "user", "content": "Sprout moved to Friday."}
 
 
@@ -658,6 +659,18 @@ def test_a_mock_hands_off_and_the_hold_follows_the_interviewer():
         assert metrics["mode"] == "mock" and metrics["endpoint_ms"] >= 400
         saved = [(r["speaker"], r.get("mock"), r.get("as")) for r in memory.appended]
         assert saved[1:4] == [("user", None, None), ("wren", None, None), ("wren", 1, "interviewer")]  # [0] is the opening
+    finally:
+        session.__exit__(None, None, None)
+
+
+def test_role_segments_are_spoken_in_the_interviewer_voice():
+    tts = FakeTts()
+    chat = FakeChat([OPENING, ["[mock]"], ["Walk me through your background."]])
+    session, ws, wire, ready, stt, rt = speaking_session(chat, tts=tts)
+    try:
+        ws.send_json({"type": "user_text", "text": "Let's practice."})
+        play(ws, wire, turn=2)
+        assert [in_role for _, in_role in tts.spoken[-3:]] == [False, True, True]
     finally:
         session.__exit__(None, None, None)
 

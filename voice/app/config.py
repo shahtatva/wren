@@ -61,6 +61,8 @@ class VoiceSettings:
     dev_user_id: UUID | None  # the loopback-only dev identity; a deploy leaves it unset
     # The chat's last resort after the Groq models, tried in order. Empty: GEMINI_FLASH_MODEL.
     gemini_chat_models: tuple[str, ...] = ()
+    # The Aura-2 voice for the interviewer in mock interviews. None: Wren's voice.
+    deepgram_interviewer_tts_model: str | None = None
 
 
 def _dev_user_id() -> UUID | None:
@@ -92,4 +94,5 @@ def load_voice_settings() -> VoiceSettings:
         gemini_chat_models=tuple(
             m.strip() for m in os.environ.get("GEMINI_CHAT_FALLBACK_MODELS", "").split(",") if m.strip()
         ),
+        deepgram_interviewer_tts_model=os.environ.get("DEEPGRAM_INTERVIEWER_TTS_MODEL", "").strip() or None,
     )

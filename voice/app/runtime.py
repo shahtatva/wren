@@ -59,7 +59,9 @@ def build_runtime() -> Runtime:
         registry=ConversationRegistry(),
         memory=MemoryProvider(settings, tuning),
         connect_stt=connect_stt,
-        tts=AuraTts(voice.deepgram_api_key, voice.deepgram_tts_model),
+        tts=AuraTts(
+            voice.deepgram_api_key, voice.deepgram_tts_model, interviewer_model=voice.deepgram_interviewer_tts_model
+        ),
         turn_log=TurnLog(LOG_DIR / "turns.jsonl"),
         auth=SupabaseAuth(settings.supabase_url, settings.supabase_secret_key),
     )

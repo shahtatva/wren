@@ -440,7 +440,7 @@ class VoiceSession:
     async def _speak(self, reply: Reply, seg: Segment) -> None:
         if self._speaks:
             try:
-                async for pcm in self.rt.tts.stream(seg.text):
+                async for pcm in self.rt.tts.stream(seg.text, in_role=seg.mock is not None):
                     if reply.timing.tts_first_byte is None:
                         reply.timing.tts_first_byte = clock.now()
                     await self._send(pack_audio(reply.no, seg.index, pcm))

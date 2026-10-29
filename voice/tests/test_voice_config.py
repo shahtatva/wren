@@ -25,6 +25,7 @@ def voice_env(monkeypatch):
     monkeypatch.delenv("WREN_DEV_USER_ID", raising=False)
     monkeypatch.delenv("GROQ_CHAT_FALLBACK_MODEL", raising=False)
     monkeypatch.delenv("GEMINI_CHAT_FALLBACK_MODELS", raising=False)
+    monkeypatch.delenv("DEEPGRAM_INTERVIEWER_TTS_MODEL", raising=False)
     return monkeypatch
 
 
@@ -32,6 +33,12 @@ def test_gemini_chat_backups_parse_as_an_ordered_list(voice_env):
     assert config.load_voice_settings().gemini_chat_models == ()
     voice_env.setenv("GEMINI_CHAT_FALLBACK_MODELS", " gemini-3.5-flash-lite, gemini-3.1-flash-lite ,")
     assert config.load_voice_settings().gemini_chat_models == ("gemini-3.5-flash-lite", "gemini-3.1-flash-lite")
+
+
+def test_the_interviewer_voice_is_optional(voice_env):
+    assert config.load_voice_settings().deepgram_interviewer_tts_model is None
+    voice_env.setenv("DEEPGRAM_INTERVIEWER_TTS_MODEL", " aura-2-orion-en ")
+    assert config.load_voice_settings().deepgram_interviewer_tts_model == "aura-2-orion-en"
 
 
 def test_voice_settings_parse_origins_and_optional_dev_user(voice_env):
