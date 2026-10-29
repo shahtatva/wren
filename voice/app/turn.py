@@ -19,6 +19,14 @@ and a separate interviewer prompt asks the first question, all in the same turn.
 mock is on, the user's words go to the interviewer, with no retrieval: it sees only its card
 and the mock's own lines. Every segment says who speaks it (Spoken).
 
+Stepping out. Before the interviewer answers, the code checks the user's words (step_out_reason),
+and ends the mock for the interviewer once it runs two turns past its questions. The interviewer
+can also hand the floor back by writing [step out]. Either way Wren says "Stepping out. It's me
+again." and answers as itself, with the mock word for word in its prompt and an instruction that
+fits why it stepped out: debrief it, hold the debrief, say it's an AI, or answer a crisis with
+no debrief. Unless the interview was done or they asked to stop it, Wren's next [mock] cue picks
+it back up. The last mock stays in Wren's prompt while any of its lines are among the recent turns.
+
 The stages come in as callables, like retrieve()'s, so the server, evals and tests can
 each wire their own. Retrieval failing never fails the turn: Wren answers without memories.
 """
@@ -26,17 +34,21 @@ each wire their own. Retrieval failing never fails the turn: Wren answers withou
 import asyncio
 import logging
 import re
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import aclosing
+from dataclasses import replace
 from datetime import date, datetime, time, timezone
 from functools import cache
 from pathlib import Path
-from typing import Protocol, Self
+from typing import Literal, Protocol, Self
 from zoneinfo import ZoneInfo
 
 from app.conversation import Conversation, HistoryTurn, Retrieved
 from app.memory.types import PipelineEntry, Profile, SearchHit
-from app.mock import STEP_IN, Cue, CueFilter, Mock, interviewer_name, interviewer_title, plain_company, resolve_target
+from app.mock import (
+    STEP_BACK_IN, STEP_IN, STEP_OUT, Cue, CueFilter, Mock, interviewer_name, interviewer_title, plain_company,
+    resolve_target, same_company, step_out_reason,
+)
 from app.voice import clock
 from app.voice.metrics import TurnTiming
 from app.voice.segment import Segmenter
@@ -55,6 +67,39 @@ RETRY_LINE = "I lost my train of thought. Could you say that again?"
 # When the opening fails twice there's nothing to say again, so Wren just greets.
 OPENING_LINE = "Hey, good to have you back. How's the search going?"
 FIRST_OPENING_LINE = "Hi, I'm Wren, an AI here to help with your job search. How's it going so far?"
+# When the interviewer's first question fails twice, there's no answer to ask for again, so it starts simple.
+FIRST_QUESTION_LINE = "Let's start simple. Walk me through your background."
+
+# What Wren does with the mock in its prompt (debrief.md), by why it took the floor back this turn.
+DEBRIEF = (  # done, or stop after an answer
+    "You've just stepped out. Debrief it now in short spoken sentences, six at most. Say what landed and what"
+    " drifted, using their actual words or stories. Give one fix. If it fits, say a friend could run the next one"
+    " with them. End by asking how it felt."
+)
+NOTHING_YET = (  # stop before any answer
+    "They stopped before answering anything, so there's nothing to debrief yet. Ask what they'd like to do."
+)
+HOLD = (  # pause, or the interviewer's cue mid-interview
+    "You stepped out because of what they just said. Answer that as yourself, and your boundaries come first."
+    " If they asked to stop or end the interview, debrief it now: what landed, what drifted, and one fix, then ask"
+    " how it felt. Otherwise hold the debrief, and offer to pick the interview back up unless a boundary rules it"
+    " out."
+)
+AI_ASKED = (
+    "You stepped out because they asked whether you're an AI or a person. Say plainly that you're an AI, then"
+    " offer to pick the interview back up."
+)
+CRISIS = (
+    "You stepped out because of what they just said. Answer it as yourself, and your boundaries come first."
+    " Don't debrief, and don't bring up the interview."
+)
+AFTER = (  # a later turn, while the mock's lines are recent
+    "If they ask about it, use this. If they want feedback you haven't given yet, debrief it: what landed, what"
+    " drifted, and one fix."
+)
+_INSTRUCTIONS = {"done": DEBRIEF, "stop": DEBRIEF, "pause": HOLD, "cue": HOLD, "ai": AI_ASKED, "crisis": CRISIS}
+_RESUMABLE = ("pause", "cue", "ai", "crisis")  # done and stop end the mock
+
 _END_MARK = r"[.!?\u2026][\"'\u201d\u2019)\]]*"
 _SENTENCE_END = re.compile(_END_MARK + "$")
 # "...ready.Whenever you're ready, ...": a sentence end with no space, then a word that starts a
@@ -186,10 +231,48 @@ def _alternating(messages: list[dict]) -> list[dict]:
     return joined
 
 
+def _mock_turns(convo: Conversation, mock: Mock) -> list[HistoryTurn]:
+    """The mock's saved lines, the interviewer's and the user's, in order."""
+    return [turn for turn in convo.turns if turn.mock == mock.id]
+
+
+def _shown_mock(convo: Conversation, history: list[HistoryTurn], step_out: str | None) -> Mock | None:
+    """The mock Wren sees word for word: the one it just stepped out of, or the last one while any of its
+    lines are among the recent turns."""
+    mock = convo.mock
+    if mock is not None and (step_out is not None or any(turn.mock == mock.id for turn in history)):
+        return mock
+    return None
+
+
+def _mock_block(convo: Conversation, mock: Mock, step_out: str | None, unsaved: Sequence[HistoryTurn]) -> str:
+    """debrief.md: the whole mock word for word, then what Wren does with it."""
+    saved = _mock_turns(convo, mock)
+    transcript = "\n".join(
+        f"{'Candidate' if turn.speaker == 'user' else mock.name}: {turn.text}" for turn in (*saved, *unsaved)
+    )
+    if step_out == "stop" and not any(turn.speaker == "user" for turn in saved):
+        instruction = NOTHING_YET  # the stop request is all they said in the mock
+    else:
+        instruction = AFTER if step_out is None else _INSTRUCTIONS[step_out]
+    return _prompt("debrief.md").format(
+        name=mock.name, who=mock.who(), transcript=transcript, instruction=instruction
+    )
+
+
 def build_messages(
-    convo: Conversation, user_text: str | None, hits: list[SearchHit], now_utc: datetime, tuning: Tuning
+    convo: Conversation, user_text: str | None, hits: list[SearchHit], now_utc: datetime, tuning: Tuning, *,
+    step_out: str | None = None, unsaved: Sequence[HistoryTurn] = (),
 ) -> list[dict]:
+    """Wren's context. step_out is why Wren took the floor back from the interviewer this turn, and unsaved
+    holds this turn's mock lines, which aren't in convo yet. The mock Wren just stepped out of, or the last
+    one while any of its lines are among the recent turns, is shown word for word in its own block, and its
+    lines leave the history, so they appear once."""
     now_local = now_utc.astimezone(ZoneInfo(convo.tz))
+    history = convo.turns[-tuning.history_turns :] if tuning.history_turns else []
+    shown = _shown_mock(convo, history, step_out)
+    if shown is not None:
+        history = [turn for turn in history if turn.mock != shown.id]
     system = _prompt("conversation.md").format(
         persona=_prompt("persona.md"),
         signals=_signals(convo, now_local, opening=user_text is None),
@@ -197,9 +280,9 @@ def build_messages(
         pipeline_days=tuning.pipeline_days,
         pipeline=_pipeline(convo.background.pipeline, now_local.date()),
         memories=_memories(hits),
+        mock="" if shown is None else _mock_block(convo, shown, step_out, unsaved),
     )
     messages = [{"role": "system", "content": system}]
-    history = convo.turns[-tuning.history_turns :] if tuning.history_turns else []
     messages += [_message(turn, mark_role=True) for turn in history]
     messages.append({"role": "user", "content": OPENING if user_text is None else user_text})
     return _alternating(messages)
@@ -235,7 +318,7 @@ def build_interviewer_messages(
     start of the mock, or when it picks back up (resumed)."""
     mock = convo.mock
     assert mock is not None, "only a conversation with a mock has an interviewer"
-    turns = [turn for turn in convo.turns if turn.mock == mock.id]
+    turns = _mock_turns(convo, mock)
     target = mock.target
     system = _prompt("interviewer.md").format(
         name=mock.name,
@@ -275,30 +358,75 @@ async def run_turn(
             yield spoken
 
 
-async def _turn(
+def _turn(
     convo: Conversation, user_text: str | None, retrieve: Retrieve, chat: Chat, timing: TurnTiming, tuning: Tuning,
     utcnow: Callable[[], datetime],
 ) -> AsyncIterator[Spoken]:
-    """Who answers: the interviewer while a mock is on, else Wren, whose [mock] cue hands off to one."""
+    """Who answers: the interviewer while a mock is on, else Wren."""
     mock = convo.mock
     if user_text is not None and mock is not None and mock.on:  # the interviewer has the floor
+        return _interview(convo, mock, user_text, retrieve, chat, timing, tuning, utcnow)
+    return _wren(convo, user_text, retrieve, chat, timing, tuning, utcnow)
+
+
+async def _interview(
+    convo: Conversation, mock: Mock, user_text: str, retrieve: Retrieve, chat: Chat, timing: TurnTiming,
+    tuning: Tuning, utcnow: Callable[[], datetime],
+) -> AsyncIterator[Spoken]:
+    """The user's words while the interviewer has the floor. The code checks them first, and ends a mock
+    that runs two turns past its questions. If neither stops it, the interviewer answers in role, and can
+    hand the floor back with [step out]. When Wren takes the floor back, it says so, then answers with the
+    mock in view."""
+    asked = sum(turn.in_role for turn in _mock_turns(convo, mock))  # the interviewer's questions before this turn
+    unsaved = [_unsaved(mock, "user", user_text)]  # spoken while the interviewer had the floor
+    reason = step_out_reason(user_text) or ("done" if asked >= tuning.mock_questions + 2 else None)
+    if reason is None:
+        cues, said = CueFilter(), []
         messages = build_interviewer_messages(convo, user_text, tuning)
-        async with aclosing(_reply(messages, chat, timing, None, mock=mock.id, fallback=RETRY_LINE)) as reply:
+        async with aclosing(_reply(messages, chat, timing, cues, mock=mock.id, fallback=RETRY_LINE)) as reply:
             async for spoken in reply:
+                said.append(spoken)
                 yield spoken
-        return
+        if cues.cue is None:  # the interview goes on
+            return
+        reason = "done" if asked >= tuning.mock_questions else "cue"
+        if said:
+            unsaved.append(_unsaved(mock, "wren", " ".join(said)))
+    convo.mock, timing.switch = replace(mock, on=False, resumable=reason in _RESUMABLE), f"step_out:{reason}"
+    for spoken in _switch_lines(STEP_OUT):
+        yield spoken
+    wren = _wren(convo, user_text, retrieve, chat, timing, tuning, utcnow, step_out=reason, unsaved=unsaved)
+    async with aclosing(wren) as reply:
+        async for spoken in reply:
+            yield spoken
+
+
+async def _wren(
+    convo: Conversation, user_text: str | None, retrieve: Retrieve, chat: Chat, timing: TurnTiming, tuning: Tuning,
+    utcnow: Callable[[], datetime], *, step_out: str | None = None, unsaved: Sequence[HistoryTurn] = (),
+) -> AsyncIterator[Spoken]:
+    """Wren's reply, with memories for the user's words. step_out says why Wren just took the floor back
+    from the interviewer, and unsaved holds this turn's mock lines. Otherwise, a [mock] cue in a reply to
+    the user's words starts a mock, or picks a paused one back up."""
     hits = [] if user_text is None else await _retrieve_memories(user_text, retrieve, timing, tuning)
-    messages = build_messages(convo, user_text, hits, utcnow(), tuning)
+    messages = build_messages(convo, user_text, hits, utcnow(), tuning, step_out=step_out, unsaved=unsaved)
     if user_text is None:  # the opening acts on no cue
         cues, fallback = None, (FIRST_OPENING_LINE if convo.background.last_session_at is None else OPENING_LINE)
+    elif step_out is not None:  # nor does the reply that just stepped out: a [mock] there is dropped
+        cues, fallback = None, RETRY_LINE
     else:
         cues, fallback = CueFilter(), RETRY_LINE
     async with aclosing(_reply(messages, chat, timing, cues, mock=None, fallback=fallback)) as reply:
         async for spoken in reply:
             yield spoken
     if cues is not None and cues.cue is not None:
-        async with aclosing(_hand_off(convo, cues.cue, chat, timing, tuning)) as handoff:
-            async for spoken in handoff:
+        mock = convo.mock
+        if mock is not None and _resumes(mock, cues.cue):
+            switch = _pick_back_up(convo, mock, chat, timing, tuning)
+        else:
+            switch = _hand_off(convo, cues.cue, chat, timing, tuning)
+        async with aclosing(switch) as lines:
+            async for spoken in lines:
                 yield spoken
 
 
@@ -333,13 +461,45 @@ async def _hand_off(
     mock_id = convo.next_mock_id()
     mock = Mock(mock_id, interviewer_name(convo.session_id, mock_id), interviewer_title(target.stage), target)
     convo.mock, timing.switch = mock, "mock_start"
-    for i, line in enumerate(STEP_IN):
-        yield Spoken(line, switch=i == 0)
+    for spoken in _switch_lines(STEP_IN):
+        yield spoken
     yield Spoken(mock.introduction(), mock=mock.id)
     messages = build_interviewer_messages(convo, None, tuning)
+    first = _reply(messages, chat, timing, None, mock=mock.id, fallback=FIRST_QUESTION_LINE)
+    async with aclosing(first) as reply:
+        async for spoken in reply:
+            yield spoken
+
+
+def _resumes(mock: Mock, cue: Cue) -> bool:
+    """Whether a [mock] cue picks this mock back up: it was paused, and the cue names no company, or the same one."""
+    company = plain_company(cue.company)
+    return mock.resumable and (company is None or same_company(company, mock.target.company))
+
+
+async def _pick_back_up(
+    convo: Conversation, mock: Mock, chat: Chat, timing: TurnTiming, tuning: Tuning
+) -> AsyncIterator[Spoken]:
+    """Resume the paused mock, with the same interviewer and question count: Wren's switch line, then the
+    interviewer carries on."""
+    mock = replace(mock, on=True, resumable=False)
+    convo.mock, timing.switch = mock, "mock_resume"
+    for spoken in _switch_lines(STEP_BACK_IN):
+        yield spoken
+    messages = build_interviewer_messages(convo, None, tuning, resumed=True)
     async with aclosing(_reply(messages, chat, timing, None, mock=mock.id, fallback=RETRY_LINE)) as reply:
         async for spoken in reply:
             yield spoken
+
+
+def _switch_lines(lines: tuple[str, ...]) -> list[Spoken]:
+    """Wren's scripted lines as the floor changes hands. The first is the switch line."""
+    return [Spoken(line, switch=i == 0) for i, line in enumerate(lines)]
+
+
+def _unsaved(mock: Mock, speaker: Literal["user", "wren"], text: str) -> HistoryTurn:
+    """One of this turn's mock lines. The session saves it after the reply, so it has no id yet."""
+    return HistoryTurn("", speaker, text, mock=mock.id, in_role=speaker == "wren")
 
 
 # What a later model call reports goes on the turn's timing. Its clock times don't: the turn's path

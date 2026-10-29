@@ -108,6 +108,8 @@ def test_targets_come_from_the_pipeline_first():
     ("Acme (Series B)", "Acme"), (" Sprout Social. ", "Sprout Social"), ("()", None), ('"Sprout"', "Sprout"),
     ("Acme [Series B", "Acme"),  # "[mock: Acme [Series B]]" ends at the first "]", so the cue holds this
     ("Sprout Social", "Sprout Social"), ("", None), (None, None),
+    # a model that copies the prompt's [mock: company] named no company
+    ("company", None), (" Company ", None), ("COMPANY", None), ("Acme Company", "Acme Company"),
 ])
 def test_a_cue_names_the_company_plainly(raw, plain):
     assert plain_company(raw) == plain

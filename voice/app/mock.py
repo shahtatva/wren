@@ -146,9 +146,10 @@ _NAME_ENDS = ".,;:!?\"'- "
 
 def plain_company(text: str | None) -> str | None:
     """The company a [mock: ...] cue names, said plainly: "Acme (Series B)" is "Acme". The introduction
-    speaks a company that isn't in the pipeline as the cue names it, and scripted lines aren't cleaned."""
+    speaks a company that isn't in the pipeline as the cue names it, and scripted lines aren't cleaned.
+    A model that copies the prompt's placeholder, [mock: company], named no company."""
     plain = " ".join(_ASIDE.sub(" ", text or "").split()).strip(_NAME_ENDS)
-    return plain or None
+    return plain if plain and plain.casefold() != "company" else None
 
 
 def _soonest(entry: PipelineEntry) -> tuple[date, time]:

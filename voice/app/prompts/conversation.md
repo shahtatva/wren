@@ -23,3 +23,4 @@ Coming up in the next {pipeline_days} days
 
 What you remember that may matter now
 {memories}
+{mock}

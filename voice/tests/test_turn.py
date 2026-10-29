@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import replace
 from datetime import date, datetime, time, timedelta, timezone
 from time import monotonic
 from uuid import UUID
@@ -503,3 +504,150 @@ def test_the_interviewer_card_steps_out_for_every_boundary():
     system = build_interviewer_messages(in_mock(1), "hi", Tuning())[0]["content"]
     for rule in ("ask whether you're an AI", "suicide, self-harm or being in danger", "under eighteen", "flirt", "ask for Wren"):
         assert rule in system, rule
+
+
+def step_out_turn(convo, text, *replies):
+    chat, timing, calls = ScriptedChat(*replies), TurnTiming(7, "mock", "voice"), []
+
+    async def retrieve(t):
+        calls.append(t)
+        return Retrieved([], 0.0)
+
+    out = asyncio.run(_collect(run_turn(convo, text, retrieve=retrieve, chat=chat, timing=timing)))
+    return out, chat, timing, calls
+
+
+def test_stop_words_bring_wren_back_to_debrief_without_the_interviewer():
+    convo = in_mock(3)
+    out, chat, timing, calls = step_out_turn(convo, "Okay, let's stop there.",
+                                             ["Your opener landed. ", "The Sprout answer drifted. ", "Lead with the result. ", "How did that feel?"])
+    assert out[:3] == ["Stepping out.", "It's me again.", "Your opener landed."] and out[0].switch
+    assert chat.calls == 1 and timing.switch == "step_out:stop" and calls == ["Okay, let's stop there."]
+    assert timing.llm_first_token is None and chat.timings[0] is not timing  # a scripted line opened the turn
+    system = chat.messages[0][0]["content"]
+    assert "You are Wren" in system and "Debrief it now" in system
+    assert "Dana: I'm Dana, the recruiter at Sprout Social. Walk me through your background." in system
+    assert "Candidate: answer 1" in system and "Candidate: Okay, let's stop there." in system
+    assert not convo.mock.on and not convo.mock.resumable
+
+
+def test_stopping_before_any_answer_skips_the_debrief():
+    _, chat, _, _ = step_out_turn(in_mock(1), "Actually, can we stop the interview?", ["Sure. What would you like to do instead?"])
+    assert "nothing to debrief" in chat.messages[0][0]["content"]
+
+
+def test_a_question_about_being_an_ai_breaks_role_at_once():
+    convo = in_mock(2)
+    out, chat, timing, _ = step_out_turn(convo, "Wait, are you a real person?", ["No, I'm an AI. ", "Want to pick it back up?"])
+    assert out[:2] == ["Stepping out.", "It's me again."] and timing.switch == "step_out:ai"
+    assert "whether you're an AI" in chat.messages[0][0]["content"] and convo.mock.resumable
+
+
+def test_a_crisis_mention_in_role_gets_wren_and_no_debrief():
+    _, chat, timing, _ = step_out_turn(in_mock(2), "I keep thinking about killing myself.", ["I'm really glad you told me."])
+    system = chat.messages[0][0]["content"]
+    assert timing.switch == "step_out:crisis" and "Don't debrief" in system and "nine eight eight" in system
+
+
+def test_the_interviewers_closing_cue_leads_into_the_debrief():
+    out, chat, timing, _ = step_out_turn(in_mock(4), "No questions from me.",
+                                         ["Thanks, that's everything I had. [step out]"], ["Your close was strong. ", "How did that feel?"])
+    assert out[:3] == ["Thanks, that's everything I had.", "Stepping out.", "It's me again."]
+    assert out[0].mock == 1 and out[1].mock is None and timing.switch == "step_out:done"
+    assert "Debrief it now" in chat.messages[1][0]["content"] and "Dana: Thanks, that's everything I had." in chat.messages[1][0]["content"]
+
+
+def test_a_step_out_cue_mid_interview_holds_the_debrief():
+    convo = in_mock(2)
+    _, chat, timing, _ = step_out_turn(convo, "You sound cute. Are you single?",
+                                       ["[step out]"], ["That's kind. I'm an AI, so I'll stick to interview practice. Back to Sprout?"])
+    assert timing.switch == "step_out:cue" and "hold the debrief" in chat.messages[1][0]["content"] and convo.mock.resumable
+
+
+def test_a_mock_that_runs_past_its_questions_is_ended_by_the_code():
+    _, chat, timing, _ = step_out_turn(in_mock(6), "Thanks!", ["Good work. How did that feel?"])
+    assert chat.calls == 1 and timing.switch == "step_out:done"
+
+
+def test_a_cue_after_a_pause_picks_the_same_mock_back_up():
+    convo = in_mock(2)
+    convo.add("user", "Wait, are you a real person?", mock=1)
+    convo.add("wren", "Stepping out. It's me again. No, I'm an AI. Want to pick it back up?")
+    convo.mock = replace(SPROUT_MOCK, on=False, resumable=True)
+    chat, timing = ScriptedChat(["[mock]"], ["Where were we. ", "Why Sprout?"]), TurnTiming(9, "checkin", "voice")
+    out = asyncio.run(_collect(run_turn(convo, "Yes, let's keep going.", retrieve=_no_memories, chat=chat, timing=timing)))
+    assert out[0] == "Okay, stepping back into role." and out[0].switch and timing.switch == "mock_resume"
+    assert (convo.mock.id, convo.mock.on, convo.mock.name) == (1, True, "Dana")
+    assert "Question 2?" in str(chat.messages[1]) and chat.messages[1][-1]["content"].endswith(INTERVIEW_RESUME)
+
+
+def test_a_cue_after_a_debrief_starts_a_new_mock():
+    convo = in_mock(2)
+    convo.mock = replace(SPROUT_MOCK, on=False, resumable=False)
+    chat, timing = ScriptedChat(["[mock]"], ["Tell me about yourself."]), TurnTiming(9, "checkin", "voice")
+    asyncio.run(_collect(run_turn(convo, "Let's do another one.", retrieve=_no_memories, chat=chat, timing=timing)))
+    assert convo.mock.id == 2 and timing.switch == "mock_start"
+
+
+def test_wren_keeps_the_last_mock_in_view_for_a_few_turns():
+    convo = in_mock(2)
+    convo.add("user", "Okay, let's stop there.", mock=1)
+    convo.add("wren", "Stepping out. It's me again. Your opener landed.")
+    convo.mock = replace(SPROUT_MOCK, on=False)
+    messages = build_messages(convo, "What about my second answer?", [], NOW, Tuning())
+    assert "Candidate: answer 1" in messages[0]["content"] and "If they ask about it, use this" in messages[0]["content"]
+    assert not any("Question 2?" in m["content"] for m in messages[1:])  # the mock's lines appear once, in the block
+    for i in range(6):
+        convo.add("user" if i % 2 == 0 else "wren", f"later {i}")
+    assert "The mock interview" not in build_messages(convo, "hi", [], NOW, Tuning())[0]["content"]
+
+
+def test_wren_after_a_step_out_never_starts_another_mock_in_the_same_turn():
+    convo = in_mock(2)
+    out, _, timing, _ = step_out_turn(convo, "Are you a bot?", ["Yes, I'm an AI. [mock]"])
+    assert not convo.mock.on and timing.switch == "step_out:ai" and "Okay, stepping into role." not in out
+
+
+def test_a_step_out_reply_that_is_only_a_mock_cue_is_asked_again():
+    out, chat, _, _ = step_out_turn(in_mock(2), "Are you a bot?", ["[mock]"], ["Yes, I'm an AI."])
+    assert chat.retries == [False, True] and out == ["Stepping out.", "It's me again.", "Yes, I'm an AI."]
+
+
+def test_a_pause_holds_the_debrief_and_can_pick_back_up():
+    convo = in_mock(2)
+    _, chat, timing, _ = step_out_turn(convo, "Wren, can I ask you something?", ["Of course. What's on your mind?"])
+    assert timing.switch == "step_out:pause" and "hold the debrief" in chat.messages[0][0]["content"] and convo.mock.resumable
+
+
+@pytest.mark.parametrize("cue, mock_id, switch", [
+    ("[mock: sprout]", 1, "mock_resume"),
+    ("[mock: company]", 1, "mock_resume"),  # the prompt's placeholder names no company
+    ("[mock: Acme]", 2, "mock_start"),
+])
+def test_a_paused_mock_picks_back_up_only_for_the_same_company(cue, mock_id, switch):
+    convo = in_mock(2)
+    convo.mock = replace(SPROUT_MOCK, on=False, resumable=True)
+    chat, timing = ScriptedChat([cue], ["Tell me about yourself."]), TurnTiming(9, "checkin", "voice")
+    asyncio.run(_collect(run_turn(convo, "Let's keep going.", retrieve=_no_memories, chat=chat, timing=timing)))
+    assert (convo.mock.id, convo.mock.on, timing.switch) == (mock_id, True, switch)
+
+
+def test_stepping_out_shows_the_whole_mock_in_order_and_leaves_it_out_of_the_history():
+    _, chat, _, _ = step_out_turn(in_mock(5), "Let's stop there.", ["Your opener landed."])
+    messages = chat.messages[0]
+    assert (  # the introduction is older than the last six turns
+        "Word for word:\nDana: I'm Dana, the recruiter at Sprout Social. Walk me through your background.\n"
+        "Candidate: answer 1\nDana: Question 2?\n"
+    ) in messages[0]["content"]
+    assert "Dana: Question 5?\nCandidate: Let's stop there.\n" in messages[0]["content"]
+    assert not any("Question 5?" in m["content"] for m in messages[1:])
+    assert messages[-1] == {"role": "user", "content": "Let's stop there."}
+
+
+def test_an_interviewer_that_fails_its_first_question_starts_simple():
+    convo, chat = conversation(), ScriptedChat(["[mock]"], ["I"], ["I"])
+    out = asyncio.run(_collect(run_turn(convo, "Let's practice.", retrieve=_no_memories, chat=chat, timing=TurnTiming(3, "checkin", "text"))))
+    assert out[-1] == "Let's start simple. Walk me through your background." and out[-1].mock == 1
+    later = ScriptedChat(["I"], ["I"])  # after an answer, asking to hear it again fits
+    out = asyncio.run(_collect(run_turn(in_mock(2), "My answer.", retrieve=_no_memories, chat=later, timing=TurnTiming(5, "mock", "voice"))))
+    assert out == ["I lost my train of thought. Could you say that again?"] and out[0].mock == 1
