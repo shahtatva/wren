@@ -309,3 +309,35 @@ test("typed text waits when there's a sign-in but no token right now", async () 
     text: "I can't reach sign-in right now. Try again in a minute.",
   });
 });
+
+test("a mock message reaches the page", async () => {
+  const { socket, events } = await startedClient();
+  socket.receive({ type: "mock", on: true, name: "Dana", title: "recruiter", company: "Sprout Social" });
+  assert.deepEqual(events.filter((event) => event.type === "mock").at(-1), {
+    type: "mock", on: true, name: "Dana", title: "recruiter", company: "Sprout Social",
+  });
+});
+
+test("segments spoken in role carry their role", async () => {
+  const { socket, events } = await startedClient();
+  socket.receive({ type: "segment", turn: 2, seg: 0, text: "Okay, stepping into role." });
+  socket.receive({ type: "segment", turn: 2, seg: 1, text: "I'm Dana.", role: "interviewer" });
+  const wren = events.filter((event) => event.type === "wren");
+  assert.deepEqual(wren.map((event) => event.role), ["wren", "interviewer"]);
+});
+
+test("POST /turn passes the mock and the role on too", async () => {
+  fakeTimers(["setTimeout"]);
+  const ndjson = [
+    { type: "session", session_id: "s1", memory: "off: test" },
+    { type: "mock", on: true, name: "Dana", title: "recruiter", company: "Sprout Social" },
+    { type: "segment", text: "Okay, stepping into role." },
+    { type: "segment", text: "I'm Dana.", role: "interviewer" },
+    { type: "end", metrics: null },
+  ].map((line) => JSON.stringify(line)).join("\n");
+  const { client, socket, events } = await startedClient({ fetch: async () => new Response(ndjson, { status: 200 }) });
+  socket.drop(1006);
+  await client.sendText("Let's practice.");
+  assert.ok(events.some((event) => event.type === "mock" && event.on));
+  assert.deepEqual(events.filter((event) => event.type === "wren").map((event) => event.role), ["wren", "interviewer"]);
+});

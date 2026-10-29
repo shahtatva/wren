@@ -4,6 +4,14 @@
 
 export type Outcome = "complete" | "interrupted" | "continued" | "failed";
 
+/** Who spoke a line. On the wire only the interviewer's segments say so: Wren's carry no role,
+ * including the switch lines "Okay, stepping into role." and "Stepping out. It's me again." */
+export type Role = "wren" | "interviewer";
+
+export function roleOf(segment: { role?: unknown }): Role {
+  return segment.role === "interviewer" ? "interviewer" : "wren";
+}
+
 export type TurnMetrics = {
   turn: number;
   mode: string;
@@ -29,18 +37,25 @@ export type TurnMetrics = {
   reply_repair: "dropped_tail" | "retried" | "gave_up" | null;
   finish_reason: string | null;
   completion_tokens: number | null;
+  // A turn that changed who has the floor: "mock_start", "mock_resume" or "step_out:<why>", with
+  // ":undone" added when nobody heard the switch.
+  switch: string | null;
 };
 
 export type ServerMessage =
   | { type: "ready"; session_id: string; voice: boolean; memory: string; model: string; resumed: boolean }
   | { type: "stt"; text: string; final: boolean }
   | { type: "user_turn"; turn: number; text: string }
-  | { type: "segment"; turn: number; seg: number; text: string }
+  | { type: "segment"; turn: number; seg: number; text: string; role?: "interviewer" }
   | { type: "segment_end"; turn: number; seg: number; samples: number }
   | { type: "reply_end"; turn: number; outcome: Outcome }
   | { type: "interrupt"; turn: number }
   | { type: "resume"; turn: number }
   | { type: "voice"; available: boolean; reason?: string }
+  // `on` is true only while the interviewer has the floor. A stepped-out or paused mock still names
+  // its interviewer, with `on: false`. With no mock at all, every field is null. It goes out before
+  // each switch line, after an undo, and right after `ready` when a reconnect lands mid-mock.
+  | { type: "mock"; on: boolean; name: string | null; title: string | null; company: string | null }
   | ({ type: "metrics" } & TurnMetrics)
   | { type: "error"; code: string; message: string };
 

@@ -1,15 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import { auth } from "@/lib/auth";
 import { VoiceClient, type ClientEvent, type VoiceStatus } from "@/lib/voice/client";
 import type { TurnMetrics } from "@/lib/voice/protocol";
 import { DebugPanel } from "./debug-panel";
 import { screenAfter, type Screen, type ScreenEvent } from "@/lib/talk-screen";
+import { EMPTY_TRANSCRIPT, transcriptAfter } from "@/lib/talk-transcript";
 import { AgeStep, SignIn } from "./sign-in";
-
-type Line = { key: string; speaker: "user" | "wren"; text: string; cut: boolean };
 
 const STATUS: Record<VoiceStatus, string> = {
   idle: "Not started",
@@ -31,17 +30,9 @@ const unknownOnServer = () => "unknown";
 // the talk screen and shows sign-in only if the server refuses. A production build starts on sign-in.
 const WITHOUT_A_SESSION: Screen = process.env.NODE_ENV === "development" ? "talk" : "sign-in";
 
-function lineKey(speaker: Line["speaker"], epoch: number, turn: number): string {
-  return `${speaker}:${epoch}:${turn}`;
-}
-
-function addWren(lines: Line[], key: string, text: string): Line[] {
-  const at = lines.findIndex((line) => line.key === key);
-  if (at === -1) return [...lines, { key, speaker: "wren", text, cut: false }];
-  const next = lines.slice();
-  next[at] = { ...next[at], text: `${next[at].text} ${text}` };
-  return next;
-}
+// The typed words that step out of a mock interview. The server reads them as a pause: Wren steps
+// out, answers, and offers to pick the interview back up (voice/app/mock.py, step_out_reason).
+const STEP_OUT_TEXT = "Step out.";
 
 type Timing = { key: string; metrics: TurnMetrics };
 
@@ -50,13 +41,16 @@ function addTiming(list: Timing[], key: string, metrics: TurnMetrics): Timing[] 
   return [...list.filter((timing) => timing.key !== key), { key, metrics }];
 }
 
-function Header({ children }: { children?: ReactNode }) {
+function Header({ children, below }: { children?: ReactNode; below?: ReactNode }) {
   return (
-    <header className="flex items-baseline justify-between pt-5 pb-3">
-      <Link href="/" className="rounded text-lg font-semibold tracking-tight focus-visible:outline-2 focus-visible:outline-wren">
-        Wren
-      </Link>
-      <div className="flex items-baseline gap-4">{children}</div>
+    <header className="pt-5 pb-3">
+      <div className="flex items-baseline justify-between">
+        <Link href="/" className="rounded text-lg font-semibold tracking-tight focus-visible:outline-2 focus-visible:outline-wren">
+          Wren
+        </Link>
+        <div className="flex items-baseline gap-4">{children}</div>
+      </div>
+      {below}
     </header>
   );
 }
@@ -70,6 +64,17 @@ function HeaderButton({ label, onClick }: { label: string; onClick: () => void }
     >
       {label}
     </button>
+  );
+}
+
+// While an interviewer has the floor: say so, and keep one tap to step out in reach. It sits on its
+// own row, because the status and sign-out already fill the first one on a phone.
+function MockBar({ onStepOut }: { onStepOut: () => void }) {
+  return (
+    <div className="flex items-baseline justify-between pt-2">
+      <p className="text-sm font-medium">Mock interview</p>
+      <HeaderButton label="Step out" onClick={onStepOut} />
+    </div>
   );
 }
 
@@ -88,7 +93,7 @@ function MicGlyph({ muted }: { muted: boolean }) {
 
 export function Talk() {
   const [status, setStatus] = useState<VoiceStatus>("idle");
-  const [lines, setLines] = useState<Line[]>([]);
+  const [{ lines, mock }, dispatch] = useReducer(transcriptAfter, EMPTY_TRANSCRIPT);
   const [caption, setCaption] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [hearing, setHearing] = useState(false);
@@ -121,6 +126,7 @@ export function Talk() {
       client.current?.stop();
       client.current = null;
       setMicOn(true);
+      dispatch({ type: "ended" }); // no session, so no mock
     }
     if (change.forgetSignIn) {
       auth.forget();
@@ -136,6 +142,7 @@ export function Talk() {
         break;
       case "ready":
         setInfo({ memory: event.memory, model: event.model });
+        dispatch(event); // a new connection means no mock, unless a "mock" message follows
         break;
       case "hearing":
         setHearing(event.available);
@@ -147,22 +154,12 @@ export function Talk() {
         setNotice(event.text);
         break;
       case "user":
-        setLines((prev) => [...prev, { key: lineKey("user", event.epoch, event.turn), speaker: "user", text: event.text, cut: false }]);
-        break;
       case "wren":
-        setLines((prev) => addWren(prev, lineKey("wren", event.epoch, event.turn), event.text));
+      case "mock":
+      case "drop":
+      case "cut":
+        dispatch(event);
         break;
-      case "drop": {
-        // That turn merged into the next one: the user hadn't finished.
-        const keys = [lineKey("user", event.epoch, event.turn), lineKey("wren", event.epoch, event.turn)];
-        setLines((prev) => prev.filter((line) => !keys.includes(line.key)));
-        break;
-      }
-      case "cut": {
-        const key = lineKey("wren", event.epoch, event.turn);
-        setLines((prev) => prev.map((line) => (line.key === key ? { ...line, cut: true } : line)));
-        break;
-      }
       case "metrics":
         setTimings((prev) => addTiming(prev, `${event.epoch}:${event.metrics.turn}`, event.metrics));
         break;
@@ -174,6 +171,7 @@ export function Talk() {
         // The session is over (the cap, or a refusal). The next tap or message starts a new one.
         client.current = null;
         setMicOn(true);
+        dispatch(event);
         break;
     }
   }, [go]);
@@ -206,14 +204,20 @@ export function Talk() {
     voice.setMic(next);
   };
 
+  const say = async (text: string) => {
+    const voice = await begin();
+    await voice.sendText(text);
+  };
+
   const onSend = async (event: FormEvent) => {
     event.preventDefault();
     const text = draft.trim();
     if (!text) return;
     setDraft("");
-    const voice = await begin();
-    await voice.sendText(text);
+    await say(text);
   };
+
+  const onStepOut = () => say(STEP_OUT_TEXT);
 
   const onSignedIn = (needsAge: boolean) => {
     setSignedIn(true);
@@ -231,7 +235,7 @@ export function Talk() {
     client.current = null;
     await auth.signOut();
     setSignedIn(false);
-    setLines([]);
+    dispatch({ type: "clear" });
     setTimings([]);
     setCaption("");
     setNotice(null);
@@ -277,7 +281,7 @@ export function Talk() {
 
   return (
     <main className="mx-auto flex h-dvh w-full max-w-[40rem] flex-col px-5">
-      <Header>
+      <Header below={mock.on ? <MockBar onStepOut={onStepOut} /> : null}>
         <p aria-live="polite" className="text-sm text-foreground/70">
           {muted ? "Muted" : STATUS[status]}
         </p>
@@ -297,7 +301,7 @@ export function Talk() {
           <ol className="space-y-3">
             {lines.map((line) => (
               <li key={line.key} className="grid grid-cols-[3rem_1fr] gap-x-3">
-                <span className="pt-0.5 text-sm text-foreground/70">{line.speaker === "wren" ? "Wren" : "You"}</span>
+                <span className="pt-0.5 text-sm text-foreground/70">{line.label}</span>
                 <p className={line.cut ? "leading-relaxed text-foreground/70" : "leading-relaxed"}>
                   {line.text}
                   {line.cut ? <span className="sr-only"> (you cut in here)</span> : null}

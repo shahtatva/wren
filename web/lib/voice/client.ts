@@ -10,7 +10,7 @@
 import { startMic, type Mic, type MicFrame } from "./mic.ts";
 import { Player, type PlayerEvent, type Route } from "./player.ts";
 import { VOICE_SERVER_URL } from "../voice-server.ts";
-import { CLOSE_CODES, parseServerMessage, reconnects, unpackAudio, type ServerMessage, type TurnMetrics } from "./protocol.ts";
+import { CLOSE_CODES, parseServerMessage, reconnects, roleOf, unpackAudio, type Role, type ServerMessage, type TurnMetrics } from "./protocol.ts";
 import { Vad } from "./vad.ts";
 
 export { VOICE_SERVER_URL };
@@ -21,14 +21,18 @@ const REFUSAL_CODES: readonly string[] = ["unauthorized", "age_unconfirmed"];
 
 export type VoiceStatus = "idle" | "connecting" | "listening" | "thinking" | "speaking" | "paused" | "reconnecting";
 
-/** `epoch` counts connections: the server numbers turns from 1 on each one. */
+/** `epoch` counts connections: the server numbers turns from 1 on each one. A "wren" event is one
+ * segment of the reply, and `role` says who spoke it. A "mock" event says who has the floor. After a
+ * "ready" there is no mock until a "mock" event says so: the server sends one only when a reconnect
+ * lands mid-mock, and a switch it undid while the socket was closing never reaches the page. */
 export type ClientEvent =
   | { type: "status"; status: VoiceStatus }
   | { type: "ready"; voice: boolean; memory: string; model: string }
   | { type: "hearing"; available: boolean }
   | { type: "caption"; text: string }
   | { type: "user"; epoch: number; turn: number; text: string }
-  | { type: "wren"; epoch: number; turn: number; text: string }
+  | { type: "wren"; epoch: number; turn: number; text: string; role: Role }
+  | { type: "mock"; on: boolean; name: string | null; title: string | null; company: string | null }
   | { type: "drop"; epoch: number; turn: number }
   | { type: "cut"; epoch: number; turn: number }
   | { type: "metrics"; epoch: number; metrics: TurnMetrics }
@@ -49,6 +53,11 @@ export const NOTICES = {
 };
 
 const RECONNECT_MS = [1000, 2000, 5000, 10000, 20000];
+
+/** The page's "mock" event. The socket and POST /turn's NDJSON send the same fields. */
+function mockEvent(m: Extract<ServerMessage, { type: "mock" }>): ClientEvent {
+  return { type: "mock", on: m.on, name: m.name, title: m.title, company: m.company };
+}
 
 type Options = {
   mode?: "checkin" | "mock";
@@ -265,7 +274,10 @@ export class VoiceClient {
         this.setStatus("thinking");
         break;
       case "segment":
-        this.emit({ type: "wren", epoch, turn: m.turn, text: m.text });
+        this.emit({ type: "wren", epoch, turn: m.turn, text: m.text, role: roleOf(m) });
+        break;
+      case "mock":
+        this.emit(mockEvent(m));
         break;
       case "segment_end":
         if (m.samples === 0 || !this.player) {
@@ -399,7 +411,8 @@ export class VoiceClient {
           if (!line) continue;
           const data = JSON.parse(line);
           if (data.type === "session") this.sessionId = data.session_id;
-          else if (data.type === "segment") this.emit({ type: "wren", epoch, turn, text: data.text });
+          else if (data.type === "mock") this.emit(mockEvent(data));
+          else if (data.type === "segment") this.emit({ type: "wren", epoch, turn, text: data.text, role: roleOf(data) });
           else if (data.type === "error") this.notice(data.message);
         }
       }
