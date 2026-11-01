@@ -37,8 +37,10 @@ export type TurnMetrics = {
   reply_repair: "dropped_tail" | "dropped_stacked" | "dropped_claim" | "dropped_question" | "retried" | "gave_up" | null;
   finish_reason: string | null;
   completion_tokens: number | null;
-  // A turn that changed who has the floor: "mock_start", "mock_resume" or "step_out:<why>", with
-  // ":undone" added when nobody heard the switch.
+  // A turn that changed who has the floor: "mock_start", "mock_resume" or "step_out:<why>". ":undone" is
+  // added only when a reply on a live socket undid its own switch: it was cut before any of the switch
+  // line was heard, the floor hadn't moved on and no other writer had saved a turn since. A crisis
+  // step-out is never undone, and a closing socket undoes nothing.
   switch: string | null;
 };
 

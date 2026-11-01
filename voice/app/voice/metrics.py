@@ -53,7 +53,10 @@ class TurnTiming:
     reply_repair: str | None = None
     finish_reason: str | None = None  # why the model's stream ended: "length" means the token cap
     completion_tokens: int | None = None  # reasoning plus reply, as the provider counted them
-    switch: str | None = None  # mock_start, mock_resume or step_out:<why>; ":undone" follows if nobody heard it
+    # mock_start, mock_resume or step_out:<why>. ":undone" follows only when a reply on a live socket undid its
+    # own switch: it was cut before any of the switch line was heard, the floor hadn't moved on and no other
+    # writer had saved a turn since. A crisis step-out is never undone, and a closing socket undoes nothing.
+    switch: str | None = None
 
     def ttfa_ms(self) -> int | None:
         return _ms(self.speech_end, self.first_audio_sent)

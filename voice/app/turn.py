@@ -11,7 +11,8 @@ the model stops on is dropped unless it ends a sentence, so a reply cut mid-word
 spoken or saved. gpt-oss sometimes finishes an answer and starts a second one with no
 space between them; the reply ends with the first. A reply with no whole sentence at all
 (empty, or one fragment) is asked for once more, before any audio, and if that fails too
-Wren says RETRY_LINE, or at the opening, a plain greeting. A sentence that claims to be human
+Wren says RETRY_LINE. At the opening it greets instead, and after stepping out for a crisis it
+says where to get help (CRISIS_FALLBACK). A sentence that claims to be human
 or a real person ("I'm the real recruiter") is never spoken: the reply ends before it, and
 if nothing was said yet, it's asked for once more the same way.
 
@@ -20,7 +21,9 @@ cue is caught before it's spoken: Wren says its switch line, an interviewer intr
 and a separate interviewer prompt asks the first question, all in the same turn. While the
 mock is on, the user's words go to the interviewer, with no retrieval: it sees only its card
 and the mock's own lines. Its last question, "What questions do you have for me?", is scripted
-(CLOSER), with no model call. Every segment says who speaks it (Spoken).
+(CLOSER). On that turn the interviewer's model call only reacts, and the code keeps one sentence
+of it that asks nothing, then speaks the question. A pickup's question asked again doesn't count
+as a new one (Mock.reasks). Every segment says who speaks it (Spoken).
 
 Stepping out. Before the interviewer answers, the code checks the user's words (step_out_reason),
 and ends the mock for the interviewer once it runs two turns past its questions. The interviewer
