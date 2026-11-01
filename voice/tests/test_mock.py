@@ -241,6 +241,14 @@ def test_more_words_that_bring_wren_back(text, reason):
     assert step_out_reason(text) == reason
 
 
+def test_the_step_out_buttons_words_step_out_even_after_a_long_answer():
+    # web/lib/step-out.ts sends them. A tap while the reply is still coming merges them onto the answer before it.
+    button = "Step out of the interview."
+    answer = "I led a five-person consulting club project that cut a nonprofit's donor churn by fifteen percent."
+    assert step_out_reason(button) == "pause" and step_out_reason(f"{answer} {button}") == "pause"
+    assert step_out_reason(f"{answer} Step out.") is None  # the old words, which count only in a short message
+
+
 def test_distress_is_never_taken_for_a_request_to_stop():
     assert step_out_reason("I want to end it all.") == "crisis"
     assert step_out_reason("I want to stop feeling like this.") != "stop"

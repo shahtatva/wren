@@ -326,6 +326,33 @@ test("segments spoken in role carry their role", async () => {
   assert.deepEqual(wren.map((event) => event.role), ["wren", "interviewer"]);
 });
 
+test("the end of a reply reaches the page, with its turn and outcome", async () => {
+  const { socket, events } = await startedClient();
+  socket.receive({ type: "reply_end", turn: 2, outcome: "interrupted" });
+  assert.deepEqual(events.filter((event) => event.type === "reply_end"), [
+    { type: "reply_end", epoch: 1, turn: 2, outcome: "interrupted" },
+  ]);
+});
+
+test("a reply over POST /turn ends too, failed or not", async () => {
+  fakeTimers(["setTimeout"]);
+  const ndjson = [
+    { type: "session", session_id: "s1", memory: "off: test" },
+    { type: "segment", text: "Sure." },
+    { type: "end", metrics: { outcome: "complete" } },
+  ].map((line) => JSON.stringify(line) + "\n").join(""); // the server ends every line, the last one too
+  const answers = [new Response(ndjson, { status: 200 }), new Response(null, { status: 500 })];
+  const { client, socket, events } = await startedClient({ fetch: async () => answers.shift()! });
+  socket.drop(1006);
+  await client.sendText("Step out of the interview.");
+  await client.sendText("Hello?");
+  const turns = events.filter((event) => event.type === "user").map((event) => event.turn);
+  assert.deepEqual(events.filter((event) => event.type === "reply_end"), [
+    { type: "reply_end", epoch: 1, turn: turns[0], outcome: "complete" },
+    { type: "reply_end", epoch: 1, turn: turns[1], outcome: "failed" },
+  ]);
+});
+
 test("POST /turn passes the mock and the role on too", async () => {
   fakeTimers(["setTimeout"]);
   const ndjson = [

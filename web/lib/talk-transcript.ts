@@ -20,8 +20,10 @@ const NO_MOCK: MockView = { on: false, name: null };
 export const EMPTY_TRANSCRIPT: Transcript = { lines: [], mock: NO_MOCK };
 
 // The speaker column is 3rem wide and holds six letters, which fits every interviewer name the server
-// picks. "Interviewer" doesn't, so it may break after "Inter" (U+00AD is a soft hyphen).
-const UNNAMED_INTERVIEWER = "Inter­viewer";
+// picks: voice/tests/test_mock.py pins them at six letters or fewer, in
+// test_the_spoken_lines_and_names_are_the_agreed_copy. "Interviewer" doesn't fit, so it may break after
+// "Inter", at the soft hyphen, U+00AD.
+const UNNAMED_INTERVIEWER = "Inter\u00ADviewer";
 
 export function speakerLabel(speaker: Speaker, interviewerName: string | null): string {
   if (speaker === "user") return "You";

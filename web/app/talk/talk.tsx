@@ -1,11 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useReducer, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
+import {
+  useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode,
+} from "react";
 import { auth } from "@/lib/auth";
 import { VoiceClient, type ClientEvent, type VoiceStatus } from "@/lib/voice/client";
 import type { TurnMetrics } from "@/lib/voice/protocol";
 import { DebugPanel } from "./debug-panel";
+import { STEP_OUT_TEXT, TAPPED, stepOutAfter, type PendingStepOut } from "@/lib/step-out";
 import { screenAfter, type Screen, type ScreenEvent } from "@/lib/talk-screen";
 import { EMPTY_TRANSCRIPT, transcriptAfter } from "@/lib/talk-transcript";
 import { AgeStep, SignIn } from "./sign-in";
@@ -29,10 +32,6 @@ const unknownOnServer = () => "unknown";
 // In development the loopback dev identity can let the page in without a sign-in, so it starts on
 // the talk screen and shows sign-in only if the server refuses. A production build starts on sign-in.
 const WITHOUT_A_SESSION: Screen = process.env.NODE_ENV === "development" ? "talk" : "sign-in";
-
-// The typed words that step out of a mock interview. The server reads them as a pause: Wren steps
-// out, answers, and offers to pick the interview back up (voice/app/mock.py, step_out_reason).
-const STEP_OUT_TEXT = "Step out.";
 
 type Timing = { key: string; metrics: TurnMetrics };
 
@@ -68,12 +67,31 @@ function HeaderButton({ label, onClick }: { label: string; onClick: () => void }
 }
 
 // While an interviewer has the floor: say so, and keep one tap to step out in reach. It sits on its
-// own row, because the status and sign-out already fill the first one on a phone.
+// own row, because the status and sign-out already fill the first one on a phone. Step out is the one
+// control in role, so its text is at full strength, and its padding gives it a 36px tap target that
+// the negative margin keeps from moving the row.
 function MockBar({ onStepOut }: { onStepOut: () => void }) {
+  const stepOut = useRef<HTMLButtonElement>(null);
+  // The bar leaves with the interview, and its button with it. If the button had focus, the message box
+  // takes it, so the keyboard isn't dropped back at the top of the page. A layout effect's cleanup runs
+  // while the button is still on the page.
+  useLayoutEffect(() => {
+    const button = stepOut.current;
+    return () => {
+      if (button !== null && document.activeElement === button) document.getElementById("message")?.focus();
+    };
+  }, []);
   return (
     <div className="flex items-baseline justify-between pt-2">
       <p className="text-sm font-medium">Mock interview</p>
-      <HeaderButton label="Step out" onClick={onStepOut} />
+      <button
+        ref={stepOut}
+        type="button"
+        onClick={onStepOut}
+        className="-my-2 rounded py-2 text-sm text-foreground underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-wren"
+      >
+        Step out
+      </button>
     </div>
   );
 }
@@ -113,6 +131,7 @@ export function Talk() {
   const client = useRef<VoiceClient | null>(null);
   const ring = useRef<HTMLSpanElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
+  const stepOut = useRef<PendingStepOut>(null); // a Step out tap the server hasn't answered yet
 
   useEffect(() => () => client.current?.stop(), []);
   useEffect(() => {
@@ -136,6 +155,7 @@ export function Talk() {
   }, []);
 
   const onEvent = useCallback((event: ClientEvent) => {
+    stepOut.current = stepOutAfter(stepOut.current, event);
     switch (event.type) {
       case "status":
         setStatus(event.status);
@@ -217,7 +237,12 @@ export function Talk() {
     await say(text);
   };
 
-  const onStepOut = () => say(STEP_OUT_TEXT);
+  // One tap at a time: until the server answers it, another tap would cut off "Stepping out." or reach Wren itself.
+  const onStepOut = () => {
+    if (stepOut.current !== null) return;
+    stepOut.current = TAPPED;
+    void say(STEP_OUT_TEXT);
+  };
 
   const onSignedIn = (needsAge: boolean) => {
     setSignedIn(true);

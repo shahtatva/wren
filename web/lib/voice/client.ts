@@ -10,7 +10,9 @@
 import { startMic, type Mic, type MicFrame } from "./mic.ts";
 import { Player, type PlayerEvent, type Route } from "./player.ts";
 import { VOICE_SERVER_URL } from "../voice-server.ts";
-import { CLOSE_CODES, parseServerMessage, reconnects, roleOf, unpackAudio, type Role, type ServerMessage, type TurnMetrics } from "./protocol.ts";
+import {
+  CLOSE_CODES, parseServerMessage, reconnects, roleOf, unpackAudio, type Outcome, type Role, type ServerMessage, type TurnMetrics,
+} from "./protocol.ts";
 import { Vad } from "./vad.ts";
 
 export { VOICE_SERVER_URL };
@@ -24,7 +26,8 @@ export type VoiceStatus = "idle" | "connecting" | "listening" | "thinking" | "sp
 /** `epoch` counts connections: the server numbers turns from 1 on each one. A "wren" event is one
  * segment of the reply, and `role` says who spoke it. A "mock" event says who has the floor. After a
  * "ready" there is no mock until a "mock" event says so: the server sends one only when a reconnect
- * lands mid-mock, and a switch it undid while the socket was closing never reaches the page. */
+ * lands mid-mock, and a switch it undid while the socket was closing never reaches the page.
+ * "reply_end" closes a turn's reply, on the socket or over POST /turn: "failed" after an error. */
 export type ClientEvent =
   | { type: "status"; status: VoiceStatus }
   | { type: "ready"; voice: boolean; memory: string; model: string }
@@ -33,6 +36,7 @@ export type ClientEvent =
   | { type: "user"; epoch: number; turn: number; text: string }
   | { type: "wren"; epoch: number; turn: number; text: string; role: Role }
   | { type: "mock"; on: boolean; name: string | null; title: string | null; company: string | null }
+  | { type: "reply_end"; epoch: number; turn: number; outcome: Outcome }
   | { type: "drop"; epoch: number; turn: number }
   | { type: "cut"; epoch: number; turn: number }
   | { type: "metrics"; epoch: number; metrics: TurnMetrics }
@@ -291,6 +295,7 @@ export class VoiceClient {
       case "reply_end":
         if (m.outcome === "continued") this.emit({ type: "drop", epoch, turn: m.turn });
         if (!this.audioTurns.has(m.turn) && this.status !== "speaking") this.setStatus("listening");
+        this.emit({ type: "reply_end", epoch, turn: m.turn, outcome: m.outcome });
         break;
       case "interrupt":
         this.player?.flush(m.turn);
@@ -379,6 +384,7 @@ export class VoiceClient {
   private async postTurn(text: string): Promise<void> {
     const turn = --this.localTurn;
     const epoch = this.epoch;
+    let outcome: Outcome = "failed"; // until the stream's last line says the reply is complete
     this.emit({ type: "user", epoch, turn, text });
     this.setStatus("thinking");
     try {
@@ -414,12 +420,14 @@ export class VoiceClient {
           else if (data.type === "mock") this.emit(mockEvent(data));
           else if (data.type === "segment") this.emit({ type: "wren", epoch, turn, text: data.text, role: roleOf(data) });
           else if (data.type === "error") this.notice(data.message);
+          else if (data.type === "end" && data.metrics?.outcome === "complete") outcome = "complete";
         }
       }
     } catch {
       this.notice(NOTICES.unreachable);
     } finally {
       if (this.status === "thinking") this.setStatus(this.ws ? "listening" : "reconnecting");
+      this.emit({ type: "reply_end", epoch, turn, outcome });
     }
   }
 

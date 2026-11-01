@@ -66,8 +66,8 @@ test("a line keeps the name it was spoken under when a later mock names someone 
 
 test("with no name known, a role line says Interviewer", () => {
   const noName = replay([interviewer(1, 2, "Hi.")]);
-  assert.equal(noName.lines[0].label, "Inter­viewer"); // a soft hyphen: it may break after "Inter" in the 3rem column
-  assert.equal(speakerLabel("interviewer", null).replace("­", ""), "Interviewer");
+  assert.equal(noName.lines[0].label, "Inter\u00ADviewer"); // a soft hyphen: it may break after "Inter" in the 3rem column
+  assert.equal(speakerLabel("interviewer", null).replace("\u00AD", ""), "Interviewer");
   assert.equal(speakerLabel("interviewer", ""), speakerLabel("interviewer", null));
   assert.equal(speakerLabel("interviewer", "  "), speakerLabel("interviewer", null));
   assert.equal(speakerLabel("interviewer", " Dana "), "Dana");
