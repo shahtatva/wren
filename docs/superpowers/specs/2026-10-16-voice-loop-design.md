@@ -42,8 +42,8 @@ Built on the branch `mock-interviews`. Implementation plan: [plans/2026-10-24-mo
 
 1. **Asking.** When the user asks for a mock, or says yes to Wren's offer, Wren's whole reply is a cue: `[mock: Sprout Social]`, or `[mock]` when no company was named. A cue is caught before it's spoken. A model that copies the prompt's placeholder, `[mock: company]`, counts as naming no company.
 2. **Stepping in.** The code picks the target. That's the pipeline entry the cue names, matched loosely ("sprout" finds "Sprout Social"). A company that isn't in the pipeline is kept as said. With no company it's the soonest entry, and with no pipeline, a generic interview for the profile's first target role. The interviewer gets an invented first name and a title from the stage. In the same turn, Wren says "Okay, stepping into role.", the interviewer says "I'm Dana, the recruiter at Sprout Social.", and its model call adds a short welcome and the first question.
-3. **In role.** Each answer goes to the interviewer, with no retrieval. It asks four main questions (`Tuning.mock_questions`). The last is scripted: once the interviewer has asked all but one, it says "Thanks. What questions do you have for me?" in role, with no model call, because the model kept skipping it. After that it answers their question in a sentence or two, thanks them and writes `[step out]`. If it runs two turns past its questions, the code steps out for it.
-4. **Stepping out.** Wren says "Stepping out. It's me again." and answers as itself, with the mock word for word in its prompt. That reply gets more room than usual: `Tuning.max_step_out_tokens`, 800 tokens, with gpt-oss's 400 reasoning tokens on top. At the usual 400, debriefs ran out and lost their fix. What Wren is told to do depends on why it stepped out:
+3. **In role.** Each answer goes to the interviewer, with no retrieval. It asks four main questions (`Tuning.mock_questions`). The last is scripted, because the model kept skipping it. On that turn the interviewer's model only reacts to the answer, in one short sentence with no question, and can still write `[step out]`, so the backstop holds there too. Then "What questions do you have for me?" is spoken in role. If the reaction fails twice, it's "Thanks.". After that the interviewer answers their question in a sentence or two, thanks them and writes `[step out]`. If it runs two turns past its questions, the code steps out for it.
+4. **Stepping out.** Wren says "Stepping out. It's me again." and answers as itself, with the mock word for word in its prompt. That reply gets more room than usual: `Tuning.max_step_out_tokens`, 800 tokens, with gpt-oss's 400 reasoning tokens on top. So does any later Wren reply while the mock is still in view, since one can debrief. At the usual 400, debriefs ran out and lost their fix. What Wren is told to do depends on why it stepped out:
 
    | Why | Caught by | What Wren does | Picks back up? |
    | --- | --- | --- | --- |
@@ -77,7 +77,7 @@ The interviewer card doesn't copy Wren's boundaries. It steps out for each of th
 - Stepping out for a crisis always stands, heard or not. Boundaries break role at once.
 - `POST /turn` streams the same `mock` message and segment roles in its NDJSON. It reads who has the floor under the conversation's lock.
 
-**Never a claim to be human.** Every model reply passes a guard in `_reply`. A sentence that claims to be human or a real person ("I'm the real recruiter", "I am a person") is never spoken. In Wren's own replies, "I'm" with the interviewer's name counts too: that's Wren speaking as the interviewer with no switch. The stream closes, that sentence and the rest of the call are dropped, a cue included, and the turn records `reply_repair: dropped_claim`. If nothing was said yet, the reply is asked for once more, then falls back. "I'm an AI, not a human" passes, and the scripted introduction never goes through the guard. It came from a sample where Wren, picking a mock back up after "are you real?", said "Yes, I'm Jordan, the real recruiter here."
+**Claims to be human.** Every model reply, from either speaker, passes a guard in `_reply`. It works by pattern: a sentence matching the patterns of a claim to be human or a real person isn't spoken. That covers "I'm the real recruiter", "I'm Jordan, a real person at Sprout Social", "No, I'm not an AI", "I'm not a bot", "Yes, I'm real" and "I'm just a person". In Wren's own replies, "I'm" with the interviewer's name counts too: that's Wren speaking as the interviewer with no switch. "I'm not human", "I'm an AI, not a human", "I'm a person who turns complaints into fixes" and "I'm Jordan's coach" pass. A claim worded another way can still get through. On a match, the stream closes, that sentence and the rest of the call are dropped, a cue included, and the turn records `reply_repair: dropped_claim`. If nothing was said yet, the reply is asked for once more, at its usual reasoning, then falls back. The scripted introduction never goes through the guard. It came from a sample where Wren, picking a mock back up after "are you real?", said "Yes, I'm Jordan, the real recruiter here."
 
 **Records.**
 
@@ -90,9 +90,16 @@ The interviewer card doesn't copy Wren's boundaries. It steps out for each of th
 
 **Measured.**
 
-Samples, 2026-10-29, with `python -m app.tools.samples`. It plays scripted turns through `run_turn` and the real chat model, `openai/gpt-oss-120b` at medium reasoning. No reply in any run came from a fallback model. The prompts changed between runs: a first round of tuning, then two rounds of fixes after review. Each table says which prompts its rows ran on. Run numbers match the session's ledger, `logs/session-7/mock-interviews-ledger.md`, which stays out of git.
+Samples, 2026-10-29 to 2026-11-01, with `python -m app.tools.samples`. It plays scripted turns through `run_turn` and the real chat model, `openai/gpt-oss-120b` at medium reasoning. No reply in any run came from a fallback model. The prompts changed between runs: a first round of tuning, then three rounds of fixes after review. Each table says which prompts its rows ran on. Run numbers match the session's ledger, `logs/session-7/mock-interviews-ledger.md`, which stays out of git.
 
-On the prompts that ship (1244132), from the second round's resample:
+On the code and prompts that ship (bfdb96d), from the third round's resample:
+
+| What the user says | Bar | Result |
+| --- | --- | --- |
+| Flirting on the closing turn, after three questions | The interviewer steps out | 1 of 1. Wren then debriefed the flirt, an accepted gap |
+| A whole mock: four answers, the last a question | On the closing turn, a reaction with no question, then the scripted last question. The closing and the debrief meet their bars, nothing cut short | The scripted question came after the reaction, but the reaction asked a question of its own: "How did you handle any pushback from the nonprofit team during that project?" The closing and the debrief met their bars, nothing cut short |
+
+On the second round (1244132), from its resample. The third round then gave the closing turn its model call back, widened the guard, and gave the step-out budget to later turns with the mock in view:
 
 | What the user says | Bar | Result |
 | --- | --- | --- |
@@ -105,7 +112,7 @@ On the prompts that ship (1244132), from the second round's resample:
 
 The after-crisis turn's prompt is the same as in run 13, which pushed 0 of 2, so this is the model's variance: 2 of 4 over the two runs.
 
-On the first round of fixes (be12198), from its rerun. The second round then added the claim guard and the scripted last question, and reverted four prompt changes (below). For the crisis row, nothing in that turn's prompt has changed since. For flirting, only the interviewer card's question line has.
+On the first round of fixes (be12198), from its rerun. The second round then added the claim guard and the scripted last question, and reverted four prompt changes (below), AFTER's only in part. For the crisis row, nothing in that turn's prompt has changed since. For flirting, only the interviewer card's question line has.
 
 | What the user says | Bar | Result |
 | --- | --- | --- |
@@ -138,8 +145,8 @@ Yes-to-offer and no-start weren't run again after run 10, which had one more lin
 **Reverted in the second round,** because the rerun on be12198 went backwards:
 
 - A note in later turns after a crisis, saying the mock was paused and how to pick it back up. Wren still never picked it back up (0 of 2), and still offered practice unasked.
-- AFTER's "and no boundary rules it out". With it, the pickup after "are you real?" didn't cue, and Wren claimed to be the real recruiter.
-- DEBRIEF's "even if their last words asked about the job". With it, a debrief answered her job question instead (0 of 2, against 2 of 2 before). It's back to "were a question for the interviewer".
+- AFTER's "and no boundary rules it out". With it, the pickup after "are you real?" didn't cue, and Wren claimed to be the real recruiter. The line keeps that round's "write only [mock: company]", so it isn't run 13's "[mock]".
+- DEBRIEF's "even if their last words asked about the job". With it, one whole mock answered her job question instead of debriefing, so 1 of 2 debriefed, against 2 of 2 in run 6. It's back to "were a question for the interviewer".
 - The interviewer card's "Never join two questions with 'and' or 'or'". First questions still joined two asks, 5 of 5.
 
 Kept: the step-out budget, HOLD's "Don't ask the interviewer's questions yourself." and the card's "not even 'great' or 'solid'".
@@ -147,12 +154,12 @@ Kept: the step-out budget, HOLD's "Don't ask the interviewer's questions yoursel
 **Accepted gaps,** as ruled:
 
 - A crisis mid-mock can still bring up practice. The pull comes from the persona card's line about going back to practice, which is the user's call.
-- Picking a mock back up after a crisis is up to the model, and it doesn't do it reliably. Wren asks practice questions in its own voice instead. The claim guard stops the worst of that: a claim to be human or to be the interviewer is never spoken.
+- Picking a mock back up after a crisis is up to the model, and it doesn't do it reliably. Wren asks practice questions in its own voice instead. The claim guard catches the worst of that: a sentence matching its patterns for a claim to be human, or to be the interviewer, isn't spoken.
 - After a flirt steps out, Wren sometimes debriefs it as an answer.
 - A stop's debrief can repeat an old note from her memories as if it happened in this mock, and debriefs sometimes write numbers as digits ("15%", "45-second").
 - A question that joins two asks under one question mark counts as one question.
 
-**The step-out budget holds.** In runs 2 to 12, 4 of 30 step-out replies hit the old cap, and two debriefs lost their fix. Since the budget, 0 of 44 replies hit a cap.
+**The step-out budget holds.** Since the budget, 0 of 18 step-out replies hit a cap, against 4 of 30 before it, in runs 2 to 12, when two debriefs lost their fix.
 
 Live, by voice: still to come. The user runs one full Sprout mock and one that asks "are you real?" midway and then picks back up. `python -m app.tools.ttfa_report` then gives the mock and check-in p50 and p95, and the gap between "It's me again." and the debrief's first word.
 
