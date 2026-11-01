@@ -34,7 +34,7 @@ export type TurnMetrics = {
   chat_fallback: string | null;
   context_tokens: number | null;
   barge_in_ms: number | null;
-  reply_repair: "dropped_tail" | "retried" | "gave_up" | null;
+  reply_repair: "dropped_tail" | "dropped_stacked" | "dropped_claim" | "retried" | "gave_up" | null;
   finish_reason: string | null;
   completion_tokens: number | null;
   // A turn that changed who has the floor: "mock_start", "mock_resume" or "step_out:<why>", with

@@ -50,8 +50,8 @@ from zoneinfo import ZoneInfo
 from app.conversation import Conversation, HistoryTurn, Retrieved
 from app.memory.types import PipelineEntry, Profile, SearchHit
 from app.mock import (
-    CLOSER, STEP_BACK_IN, STEP_IN, STEP_OUT, Cue, CueFilter, Mock, interviewer_name, interviewer_title, plain_company,
-    resolve_target, same_company, step_out_reason,
+    CLOSER, CLOSER_LEAD, STEP_BACK_IN, STEP_IN, STEP_OUT, Cue, CueFilter, Mock, interviewer_name, interviewer_title,
+    plain_company, resolve_target, same_company, step_out_reason,
 )
 from app.voice import clock
 from app.voice.metrics import TurnTiming
@@ -116,10 +116,16 @@ _GLUED_ANSWER = re.compile(r"(?<=[a-z0-9])" + _END_MARK + r"(?=(?:[A-Z][a-z]+|[A
 # A spoken line that claims to be human or a real person. Normalized to straight apostrophes first.
 _APOSTROPHES = str.maketrans("‘’", "''")
 _I_AM = r"\bi(?:'m|\s+am)\s+"
+_SO = r"(?:(?:just|really|actually|truly)\s+)?"  # "I'm actually human", "I am really a person"
+_REAL_ONE = r"(?:real|actual)\s+(?:live\s+)?(?:person|human(?:\s+being)?|recruiter|interviewer|hiring\s+manager|one)\b"
+_CLAUSE_ENDS = r"(?=\s*(?:[.!?,;:]|$))"  # so "I'm a person who..." and "a human resources partner" aren't claims
 _CLAIM = re.compile(
-    _I_AM + r"(?:(?:just|really|actually)\s+)?(?:(?:a|an|the)\s+)?(?:real|actual)\s+"
-    r"(?:person|human|recruiter|interviewer|hiring\s+manager|one)\b"
-    r"|" + _I_AM + r"(?:a\s+)?(?:human|person)\b",
+    _I_AM + _SO + r"(?:(?:a|an|the)\s+)?" + _REAL_ONE  # "I'm the real recruiter", "I'm a real live person"
+    + r"|" + _I_AM + r"(?-i:[A-Z][a-z]+),\s+(?:a|an|the)\s+" + _REAL_ONE  # "I'm Jordan, a real person at Sprout"
+    + r"|" + _I_AM + _SO + r"(?:a\s+)?(?:human(?:\s+being)?|person)" + _CLAUSE_ENDS  # "I'm just a person."
+    + r"|" + _I_AM + _SO + r"real" + _CLAUSE_ENDS  # "Yes, I'm real."
+    # "No, I'm not an AI.", "I'm not a bot."
+    + r"|" + _I_AM + r"not\s+(?:an?\s+)?(?:ai|a\.i\.|bot|chat\s?bot|robot|machine|computer|program)\b",
     re.IGNORECASE,
 )
 
@@ -127,13 +133,14 @@ Retrieve = Callable[[str], Awaitable[Retrieved]]
 
 
 def claims_to_be_human(text: str, interviewer: str | None = None) -> bool:
-    """Whether a line claims to be human or a real person: "I'm the real recruiter", "I am a person".
-    interviewer is the mock's name, for Wren's own lines: "I'm Jordan" from Wren speaks as the interviewer
-    with no switch. "I'm not a real person" and "I'm an AI, not a human" don't count."""
+    """Whether a line matches the patterns of a claim to be human or a real person: "I'm the real recruiter",
+    "I'm just a person.", "No, I'm not an AI." interviewer is the mock's name, for Wren's own lines: "I'm
+    Jordan" from Wren speaks as the interviewer with no switch ("I'm Jordan's coach" doesn't). "I'm not a
+    real person", "I'm an AI, not a human" and "I'm a person who turns complaints into fixes" don't count."""
     text = text.translate(_APOSTROPHES)
     if _CLAIM.search(text):
         return True
-    name = rf"{_I_AM}{re.escape(interviewer)}\b" if interviewer else None
+    name = rf"{_I_AM}{re.escape(interviewer)}\b(?!'s)" if interviewer else None
     return name is not None and re.search(name, text, re.IGNORECASE) is not None
 
 
@@ -293,6 +300,12 @@ def _mock_block(convo: Conversation, mock: Mock, step_out: str | None, unsaved: 
         name=mock.name, who=mock.who(), transcript=transcript, instruction=instruction
     )
 
+
+def _recent(convo: Conversation, tuning: Tuning) -> list[HistoryTurn]:
+    """The last few turns: the history Wren's prompt shows."""
+    return convo.turns[-tuning.history_turns :] if tuning.history_turns else []
+
+
 def build_messages(
     convo: Conversation, user_text: str | None, hits: list[SearchHit], now_utc: datetime, tuning: Tuning, *,
     step_out: str | None = None, unsaved: Sequence[HistoryTurn] = (),
@@ -302,7 +315,7 @@ def build_messages(
     one while any of its lines are among the recent turns, is shown word for word in its own block, and its
     lines leave the history, so they appear once."""
     now_local = now_utc.astimezone(ZoneInfo(convo.tz))
-    history = convo.turns[-tuning.history_turns :] if tuning.history_turns else []
+    history = _recent(convo, tuning)
     shown = _shown_mock(convo, history, step_out)
     if shown is not None:
         history = [turn for turn in history if turn.mock != shown.id]
@@ -331,14 +344,19 @@ def _candidate(profile: Profile | None) -> str:
 
 def _next_step(asked: int, total: int, *, resumed: bool = False) -> str:
     """What the interviewer does next, from how many questions it has asked: its turns in the mock. On a
-    pickup, wherever it was, it asks the question it was on again. The last question, "What questions do
-    you have for me?", is scripted in _interview, so the model never comes here for it."""
+    pickup, wherever it was, it asks the question it was on again. Before the last question it only
+    reacts: _interview speaks "What questions do you have for me?" after it."""
     if resumed:
         return "You're picking the interview back up. Ask the question you were on again, in your own words."
     if asked == 0:
         return "You've just introduced yourself. Ask your first question."
     if asked < total - 1:
         return f"Ask your next question. You've asked {asked} of {total}."
+    if asked == total - 1:
+        return (
+            "React to their answer in one short sentence, with no question. The closing question is asked for you"
+            " after it."
+        )
     return (
         "You've asked all your questions. If they asked you anything, answer in a sentence or two, in general terms."
         " Then thank them in one short sentence and write [step out]. Don't ask anything more."
@@ -418,18 +436,19 @@ async def _interview(
     asked = sum(turn.in_role for turn in _mock_turns(convo, mock))  # the interviewer's questions before this turn
     unsaved = [_unsaved(mock, "user", user_text)]  # spoken while the interviewer had the floor
     reason = step_out_reason(user_text) or ("done" if asked >= tuning.mock_questions + 2 else None)
-    if reason is None and asked == tuning.mock_questions - 1:  # the last question is scripted, in role
-        for line in CLOSER:
-            yield Spoken(line, mock=mock.id)
-        return
     if reason is None:
+        # Before the last question, the model only reacts, and can still step out. The question itself is scripted.
+        closing = asked == tuning.mock_questions - 1
         cues, said = CueFilter(), []
         messages = build_interviewer_messages(convo, user_text, tuning)
-        async with aclosing(_reply(messages, chat, timing, cues, mock=mock.id, fallback=RETRY_LINE)) as reply:
+        fallback = CLOSER_LEAD if closing else RETRY_LINE
+        async with aclosing(_reply(messages, chat, timing, cues, mock=mock.id, fallback=fallback)) as reply:
             async for spoken in reply:
                 said.append(spoken)
                 yield spoken
         if cues.cue is None:  # the interview goes on
+            if closing:
+                yield Spoken(CLOSER, mock=mock.id)
             return
         reason = "done" if asked >= tuning.mock_questions else "cue"
         if said:
@@ -459,8 +478,10 @@ async def _wren(
         cues, fallback = None, RETRY_LINE
     else:
         cues, fallback = CueFilter(), RETRY_LINE
-    # A reply after any step-out gets more room than the usual cap: debriefs ran into it and lost their fix.
-    max_tokens = None if step_out is None else tuning.max_step_out_tokens
+    # A reply with the mock in view, after a step-out or on a later turn that can debrief, gets more room than the
+    # usual cap: debriefs ran into it and lost their fix.
+    in_view = _shown_mock(convo, _recent(convo, tuning), step_out) is not None
+    max_tokens = tuning.max_step_out_tokens if in_view else None
     interviewer = convo.mock.name if convo.mock is not None else None  # Wren never speaks as the interviewer
     reply = _reply(
         messages, chat, timing, cues, mock=None, fallback=fallback, max_tokens=max_tokens, interviewer=interviewer,
@@ -583,36 +604,46 @@ async def _reply(
     own_cue = "mock" if mock is None else "step_out"  # Wren hands the floor over, the interviewer hands it back
     found = cues if cues is not None else CueFilter()
     cap = {} if max_tokens is None else {"max_tokens": max_tokens}  # like retry, passed only when it isn't the usual
-    name = interviewer if mock is None else None  # the interviewer itself may say its own name
+    name_to_guard = interviewer if mock is None else None  # the interviewer itself may say its own name
     call = timing if timing.first_segment is None else TurnTiming(timing.turn, timing.mode, timing.input)
     # rough, no tokenizer for every model
     timing.context_tokens = (timing.context_tokens or 0) + sum(len(m["content"]) for m in messages) // 4
     call.llm_start = clock.now()
     try:
+        claimed = False  # the attempt before was cut at a claim to be human
         for attempt in range(2):
             found.reset()
             spoke = False
-            stream = chat(messages, call, retry=True, **cap) if attempt else chat(messages, call, **cap)
+            # The second ask runs at low reasoning (retry=True) after a reply with no whole sentence, which reasoning
+            # that filled the budget can cause. After a dropped claim it keeps its reasoning.
+            low = attempt > 0 and not claimed
+            stream = chat(messages, call, retry=True, **cap) if low else chat(messages, call, **cap)
+            claimed = False
             async with aclosing(_whole_sentences(_until_cue(stream, found), call)) as segments:
                 async for text in segments:
-                    if claims_to_be_human(text, name):  # leaving the loop closes the stream
+                    if claims_to_be_human(text, name_to_guard):  # leaving the loop closes the stream
                         found.reset()  # a cue after it goes too
-                        call.reply_repair = "dropped_claim"
-                        logger.warning("chat model %s claimed to be human, dropped it and what followed", call.model)
+                        claimed, call.reply_repair = True, "dropped_claim"
                         break
                     spoke = True
                     yield Spoken(text, mock=mock)
             if found.cue is not None and (cues is None or found.cue.kind != own_cue):
                 logger.warning("chat model %s wrote %s where it isn't acted on, dropped it", call.model, found.cue)
                 found.reset()
+            if claimed:
+                logger.warning(
+                    "chat model %s claimed to be human: dropped the claim and what followed%s",
+                    call.model, "" if spoke else (", again" if attempt else ", asking again"),
+                )
             if spoke or found.cue is not None:
                 if attempt and call.reply_repair != "dropped_claim":  # a dropped claim is the repair to see
                     call.reply_repair = "retried"
                 return
-            logger.warning(
-                "chat model %s sent no whole sentence (finish %s)%s",
-                call.model, call.finish_reason, " again" if attempt else ", asking again",
-            )
+            if not claimed:
+                logger.warning(
+                    "chat model %s sent no whole sentence (finish %s)%s",
+                    call.model, call.finish_reason, " again" if attempt else ", asking again",
+                )
         call.reply_repair = "gave_up"
         yield Spoken(fallback, mock=mock)
     finally:

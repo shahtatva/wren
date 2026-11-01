@@ -259,9 +259,12 @@ def test_the_mock_scenarios_reach_the_moments_they_test():
     by_name = {s.name: s for s in SCENARIOS}
     assert len(by_name) == len(SCENARIOS)  # --scenario picks them by name
     assert [s.name for s in SCENARIOS if s.group == "mock"] == [
-        "start", "yes-to-offer", "no-start", "ai-in-role", "crisis-in-role", "flirt-in-role", "stop-mid", "full-mock",
-        "pickup-ai", "pickup-pause", "pickup-cue", "pickup-crisis", "after-crisis",
+        "start", "yes-to-offer", "no-start", "ai-in-role", "crisis-in-role", "flirt-in-role", "flirt-at-closer",
+        "stop-mid", "full-mock", "pickup-ai", "pickup-pause", "pickup-cue", "pickup-crisis", "after-crisis",
     ]
+    # Flirting on the closing turn, after three questions: only the interviewer's [step out] can catch it.
+    closer = by_name["flirt-at-closer"]
+    assert sum(t.in_role for t in closer.setup().turns) == 3 and step_out_reason(closer.lines[0]) is None
     assert by_name["yes-to-offer"].setup().turns[-1].text == "Sprout's tomorrow. Want to run the screen once tonight?"
     # In role, the code steps out for the AI question, the crisis and the stop. Flirting is the interviewer's to catch.
     in_role = ("ai-in-role", "crisis-in-role", "flirt-in-role", "stop-mid")

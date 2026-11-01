@@ -435,6 +435,7 @@ def test_interviewer_turns_skip_retrieval_and_see_only_the_mock():
 
 @pytest.mark.parametrize("asked, step", [
     (2, "Ask your next question. You've asked 2 of 4."),
+    (3, "React to their answer in one short sentence, with no question. The closing question is asked for you after it."),
     (4, "You've asked all your questions"),
 ])
 def test_the_interviewer_knows_where_it_is(asked, step):
@@ -443,21 +444,33 @@ def test_the_interviewer_knows_where_it_is(asked, step):
     assert step in chat.messages[0][0]["content"]
 
 
-def test_the_last_question_is_scripted_with_no_model_call():
+def test_the_closing_turn_reacts_then_asks_the_scripted_last_question():
     # In the samples the model skipped "What questions do you have for me?" every time, even when told it exactly.
-    chat, timing = ScriptedChat(), TurnTiming(5, "mock", "voice")
+    chat, timing = ScriptedChat(["Thanks for walking me through that."]), TurnTiming(5, "mock", "voice")
     out = asyncio.run(_collect(run_turn(in_mock(3), "My answer.", retrieve=_no_memories, chat=chat, timing=timing)))
-    assert out == list(CLOSER) == ["Thanks.", "What questions do you have for me?"]
-    assert [s.mock for s in out] == [1, 1] and chat.calls == 0 and timing.switch is None
+    assert out == ["Thanks for walking me through that.", CLOSER] and CLOSER == "What questions do you have for me?"
+    assert [s.mock for s in out] == [1, 1] and chat.calls == 1 and timing.switch is None  # the model still reads it
+    failed = ScriptedChat(["I"], ["I"])  # no whole sentence, twice
+    out = asyncio.run(_collect(run_turn(in_mock(3), "My answer.", retrieve=_no_memories, chat=failed, timing=TurnTiming(5, "mock", "voice"))))
+    assert out == ["Thanks.", CLOSER]
+
+
+def test_a_step_out_on_the_closing_turn_still_steps_out():
+    convo = in_mock(3)
+    flirt = "Before I answer, I have to say, you have a really nice voice. Are you single?"
+    out, chat, timing, _ = step_out_turn(convo, flirt, ["[step out]"], ["That's kind. I'm an AI. Want to pick it back up?"])
+    assert out[:2] == ["Stepping out.", "It's me again."] and CLOSER not in out and timing.switch == "step_out:cue"
+    assert convo.mock.resumable and "hold the debrief" in chat.messages[1][0]["content"]
 
 
 def test_the_scripted_closer_is_saved_in_role_and_counts_as_a_question():
     convo = in_mock(3)
-    out = asyncio.run(_collect(run_turn(convo, "My answer.", retrieve=_no_memories, chat=ScriptedChat(), timing=TurnTiming(5, "mock", "voice"))))
+    chat = ScriptedChat(["Thanks for that."])
+    out = asyncio.run(_collect(run_turn(convo, "My answer.", retrieve=_no_memories, chat=chat, timing=TurnTiming(5, "mock", "voice"))))
     convo.add("user", "My answer.", mock=1)  # saved as the session and POST /turn save them
     for text, mock in reply_runs((spoken, spoken.mock) for spoken in out):
         convo.add("wren", text, mock=mock, in_role=mock is not None)
-    assert (convo.turns[-1].text, convo.turns[-1].in_role) == ("Thanks. What questions do you have for me?", True)
+    assert (convo.turns[-1].text, convo.turns[-1].in_role) == ("Thanks for that. What questions do you have for me?", True)
     chat = ScriptedChat(["Mostly outreach. Thanks for your time. [step out]"], ["Your opener landed. How did that feel?"])
     asyncio.run(_collect(run_turn(convo, "What's a typical day like?", retrieve=_no_memories, chat=chat, timing=TurnTiming(6, "mock", "voice"))))
     assert "You've asked all your questions" in chat.messages[0][0]["content"]
@@ -754,6 +767,21 @@ def test_a_reply_after_any_step_out_gets_the_step_out_token_budget():
     assert chat.max_tokens == [None, budget, budget] and chat.retries == [False, False, True]
 
 
+def test_a_reply_with_the_mock_in_view_gets_the_step_out_budget():
+    convo = in_mock(2)  # stopped, with the mock still among the recent turns: an AFTER turn can debrief
+    convo.add("user", "Okay, let's stop there.", mock=1)
+    convo.add("wren", "Stepping out. It's me again. Your opener landed.")
+    convo.mock = replace(SPROUT_MOCK, on=False)
+    chat = ScriptedChat(["Your second answer drifted. ", "Lead with the result."])
+    asyncio.run(_collect(run_turn(convo, "What about my second answer?", retrieve=_no_memories, chat=chat, timing=TurnTiming(9, "checkin", "voice"))))
+    assert chat.max_tokens == [Tuning().max_step_out_tokens]
+    for i in range(6):  # the mock leaves the recent turns, and its block with it
+        convo.add("user" if i % 2 == 0 else "wren", f"later {i}")
+    chat = ScriptedChat(["Sure."])
+    asyncio.run(_collect(run_turn(convo, "Thanks.", retrieve=_no_memories, chat=chat, timing=TurnTiming(13, "checkin", "voice"))))
+    assert chat.max_tokens == [None]
+
+
 def test_an_ordinary_reply_keeps_the_usual_cap():
     chat = ScriptedChat(["Sprout's tomorrow at eleven."])
     turn_out(chat, TurnTiming(3, "checkin", "voice"))
@@ -768,6 +796,10 @@ def test_the_interviewer_card_talks_for_the_ear():
 @pytest.mark.parametrize("text", [
     "Yes, I'm the real recruiter here.", "I am a real person, I promise.", "I’m actually the real one.",
     "I'm human.", "I am a person, like you.", "Honestly, I'm a real person, yes.", "I'm a real hiring manager.",
+    # From any speaker, the interviewer included.
+    "I'm Jordan, a real person at Sprout Social.", "Yes, I'm Jordan, the real recruiter here.", "No, I'm not an AI.",
+    "I'm not a bot.", "Yes, I'm real.", "I'm actually human.", "I'm just a person.", "I am really a person.",
+    "I'm a real live person.",
 ])
 def test_a_claim_to_be_human_is_caught(text):
     assert claims_to_be_human(text)
@@ -775,7 +807,9 @@ def test_a_claim_to_be_human_is_caught(text):
 
 @pytest.mark.parametrize("text", [
     "I'm not a real person.", "I'm an AI, not a human.", "I'm Wren.", "I'm the recruiter at Sprout Social.",
-    "I'm actually an AI.", "I'm Jordanna's coach.",
+    "I'm actually an AI.", "I'm Jordanna's coach.", "I'm not human.", "I'm Wren, not Jordan.",
+    "Try opening with: I'm a person who turns complaints into fixes.", "I'm a human resources partner at Acme.",
+    "I'm Jordan's coach.",
 ])
 def test_saying_its_an_ai_is_not_a_claim_to_be_human(text):
     assert not claims_to_be_human(text, interviewer="Jordan")
@@ -793,13 +827,15 @@ def paused_with_jordan() -> Conversation:
     return convo
 
 
-def test_wren_never_speaks_a_claim_to_be_the_interviewer_and_asks_again():
+def test_wren_never_speaks_a_claim_to_be_the_interviewer_and_asks_again(caplog):
     convo, timing = paused_with_jordan(), TurnTiming(9, "checkin", "voice")
     claim = ["Yes, I'm Jordan, the real recruiter here. ", "What excites you about the role?"]
     chat = ScriptedChat(claim, ["[mock: Sprout Social]"], ["Why Sprout?"])
     out = asyncio.run(_collect(run_turn(convo, "Yes, let's keep going.", retrieve=_no_memories, chat=chat, timing=timing)))
     assert out == ["Okay, stepping back into role.", "Why Sprout?"] and timing.switch == "mock_resume"
-    assert chat.retries == [False, True, False] and timing.reply_repair == "dropped_claim"
+    # The ask again keeps its reasoning (retry=True is for replies short of tokens), and the log says why.
+    assert chat.retries == [False, False, False] and timing.reply_repair == "dropped_claim"
+    assert "claimed to be human" in caplog.text and "no whole sentence" not in caplog.text
     twice = ScriptedChat(claim, ["I'm a real person, honestly."])
     out = asyncio.run(_collect(run_turn(paused_with_jordan(), "Yes, let's keep going.", retrieve=_no_memories, chat=twice, timing=TurnTiming(9, "checkin", "voice"))))
     assert out == [RETRY_LINE]
@@ -822,7 +858,7 @@ def test_saying_its_an_ai_is_spoken_in_full():
 def test_an_interviewer_claiming_to_be_a_real_person_is_never_heard():
     chat = ScriptedChat(["Honestly, I'm a real person, yes."], ["Okay. ", "Why Sprout?"])
     out = asyncio.run(_collect(run_turn(in_mock(2), "My answer.", retrieve=_no_memories, chat=chat, timing=TurnTiming(5, "mock", "voice"))))
-    assert out == ["Okay.", "Why Sprout?"] and [s.mock for s in out] == [1, 1] and chat.retries == [False, True]
+    assert out == ["Okay.", "Why Sprout?"] and [s.mock for s in out] == [1, 1] and chat.retries == [False, False]
 
 
 def test_a_claim_mid_reply_keeps_what_came_before_it_and_stops_generation():

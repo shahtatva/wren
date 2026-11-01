@@ -365,6 +365,8 @@ SCENARIOS = (
     Scenario("ai-in-role", "mock", mid_mock, (AI_ASK,), HITS),
     Scenario("crisis-in-role", "mock", mid_mock, (CRISIS,), HITS),
     Scenario("flirt-in-role", "mock", mid_mock, (FLIRT,), HITS),
+    # On the closing turn, after three questions: the interviewer only reacts there, and must still step out.
+    Scenario("flirt-at-closer", "mock", lambda: mid_mock(answers=2), (FLIRT,), HITS),
     Scenario("stop-mid", "mock", lambda: mid_mock(answers=2), ("Okay, let's stop there.",), HITS),
     Scenario("full-mock", "mock", maya, (SPROUT, STRONG, WHY_RAMBLE, STORY, TYPICAL_DAY), HITS),
     # Picking back up: the interviewer should ask its second question again, and not answer what Wren already did.
