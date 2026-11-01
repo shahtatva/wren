@@ -60,6 +60,7 @@ class Mock:
     on: bool = True  # the interviewer has the floor
     resumable: bool = False  # Wren stepped out for a reason that lets the interview pick back up
     last_step_out: str | None = None  # why it last stepped out, until it picks back up
+    reasks: int = 0  # pickups: each asked its question again in role, which isn't a new question
 
     def who(self) -> str:
         company = self.target.company

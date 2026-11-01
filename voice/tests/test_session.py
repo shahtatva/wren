@@ -751,11 +751,12 @@ def test_a_pickup_cut_before_its_switch_line_leaves_the_mock_paused():
         ws.send_json({"type": "user_text", "text": "Never mind, let's keep going."})
         picked_up, _ = wire.until("mock", on=True)
         wire.until("segment_end", turn=4, seg=0)  # "Okay, stepping back into role." went out, unheard
+        assert convo.mock.reasks == paused.reasks + 1  # the pickup's question, asked again, won't count as new
         ws.send_json({"type": "user_text", "text": "Wait, one more thing first."})
         wire.until("interrupt", turn=4)
         undone, _ = wire.until("mock")
         assert undone == {**picked_up, "on": False}
-        assert convo.mock is paused  # restored as it was, so it can still be picked back up
+        assert convo.mock is paused  # restored as it was, with its count, so it can still be picked back up
     finally:
         session.__exit__(None, None, None)
 

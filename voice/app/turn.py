@@ -68,6 +68,8 @@ INTERVIEW_RESUME = "[The interview picks back up after a break.]"
 ROLE_MARK = "[As the interviewer] "  # starts a line Wren spoke in role, in Wren's own history
 MODES = {"checkin": "a check-in", "mock": "mock interview practice"}
 RETRY_LINE = "I lost my train of thought. Could you say that again?"
+# When Wren's reply after stepping out for a crisis fails twice, asking them to repeat it won't do: real help comes first.
+CRISIS_FALLBACK = "If you're in danger right now, call nine one one. You can call or text nine eight eight any time."
 # When the opening fails twice there's nothing to say again, so Wren just greets.
 OPENING_LINE = "Hey, good to have you back. How's the search going?"
 FIRST_OPENING_LINE = "Hi, I'm Wren, an AI here to help with your job search. How's it going so far?"
@@ -112,6 +114,12 @@ _SENTENCE_END = re.compile(_END_MARK + "$")
 # "...ready.Whenever you're ready, ...": a sentence end with no space, then a word that starts a
 # sentence. Not "Ph.D.", "Socket.IO" or "www.LinkedIn.com": the next word must look like a word.
 _GLUED_ANSWER = re.compile(r"(?<=[a-z0-9])" + _END_MARK + r"(?=(?:[A-Z][a-z]+|[AI])[\s,;:!?.'\u2019])")
+# A sentence that asks something: it ends on a question mark, closing quotes or brackets allowed, or it opens with
+# a verb that asks, after an "Okay," or "So," or not: "Tell me more about that.", "Walk me through the numbers."
+_ENDS_ON_QUESTION = re.compile(r"\?[\"'\u201d\u2019)\]]*$")
+_ASK_VERB = re.compile(
+    r"^\W*(?:(?:okay|ok|so|now|and|please)\W+)*(?:tell|walk|describe|explain|share|give|talk)\b", re.IGNORECASE
+)
 
 # A spoken line that claims to be human or a real person. Normalized to straight apostrophes first.
 _APOSTROPHES = str.maketrans("‘’", "''")
@@ -168,6 +176,12 @@ class Spoken(str):
 
 def ends_a_sentence(text: str) -> bool:
     return _SENTENCE_END.search(text.rstrip()) is not None
+
+
+def _asks(sentence: str) -> bool:
+    """Whether a sentence asks something (_ENDS_ON_QUESTION, _ASK_VERB)."""
+    sentence = sentence.strip()
+    return _ENDS_ON_QUESTION.search(sentence) is not None or _ASK_VERB.match(sentence) is not None
 
 
 @cache
@@ -274,6 +288,12 @@ def _mock_turns(convo: Conversation, mock: Mock) -> list[HistoryTurn]:
     return [turn for turn in convo.turns if turn.mock == mock.id]
 
 
+def _questions_asked(convo: Conversation, mock: Mock) -> int:
+    """How many questions the interviewer has asked: its saved lines in the mock, less the ones where a pickup
+    asked its question again."""
+    return sum(turn.in_role for turn in _mock_turns(convo, mock)) - mock.reasks
+
+
 def _shown_mock(convo: Conversation, history: list[HistoryTurn], step_out: str | None) -> Mock | None:
     """The mock Wren sees word for word: the one it just stepped out of, or the last one while any of its
     lines are among the recent turns. After a crisis, only the turn that stepped out sees it: practice waits
@@ -349,7 +369,7 @@ def _candidate(profile: Profile | None) -> str:
 
 
 def _next_step(asked: int, total: int, *, resumed: bool = False) -> str:
-    """What the interviewer does next, from how many questions it has asked: its turns in the mock. On a
+    """What the interviewer does next, from how many questions it has asked (_questions_asked). On a
     pickup, wherever it was, it asks the question it was on again. Before the last question it only
     reacts: _interview speaks "What questions do you have for me?" after it."""
     if resumed:
@@ -391,7 +411,7 @@ def build_interviewer_messages(
         stage=target.stage or "a first-round interview",
         notes=target.notes or "none",
         candidate=_candidate(convo.background.profile),
-        next_step=_next_step(sum(turn.in_role for turn in turns), tuning.mock_questions, resumed=resumed),
+        next_step=_next_step(_questions_asked(convo, mock), tuning.mock_questions, resumed=resumed),
     )
     messages = [{"role": "system", "content": system}, {"role": "user", "content": INTERVIEW_START}]
     messages += [_message(turn, mark_role=False) for turn in turns]
@@ -439,21 +459,24 @@ async def _interview(
     that runs two turns past its questions. If neither stops it, the interviewer answers in role, and can
     hand the floor back with [step out]. When Wren takes the floor back, it says so, then answers with the
     mock in view."""
-    asked = sum(turn.in_role for turn in _mock_turns(convo, mock))  # the interviewer's questions before this turn
+    asked = _questions_asked(convo, mock)  # before this turn
     unsaved = [_unsaved(mock, "user", user_text)]  # spoken while the interviewer had the floor
     reason = step_out_reason(user_text) or ("done" if asked >= tuning.mock_questions + 2 else None)
     if reason is None:
-        # Before the last question, the model only reacts, and can still step out. The question itself is scripted.
+        # Before the last question, the model only reacts, and can still step out. The question itself is scripted,
+        # and it's the turn's only one: the reaction keeps one sentence that asks nothing (_one_reaction).
         closing = asked == tuning.mock_questions - 1
         cues, said = CueFilter(), []
         messages = build_interviewer_messages(convo, user_text, tuning)
-        fallback = CLOSER_LEAD if closing else RETRY_LINE
-        async with aclosing(_reply(messages, chat, timing, cues, mock=mock.id, fallback=fallback)) as reply:
-            async for spoken in reply:
+        reply = _reply(messages, chat, timing, cues, mock=mock.id, fallback=CLOSER_LEAD if closing else RETRY_LINE)
+        async with aclosing(_one_reaction(reply, timing) if closing else reply) as lines:
+            async for spoken in lines:
                 said.append(spoken)
                 yield spoken
         if cues.cue is None:  # the interview goes on
             if closing:
+                if not said:  # every sentence of the reaction asked something
+                    yield Spoken(CLOSER_LEAD, mock=mock.id)
                 yield Spoken(CLOSER, mock=mock.id)
             return
         reason = "done" if asked >= tuning.mock_questions else "cue"
@@ -469,6 +492,30 @@ async def _interview(
             yield spoken
 
 
+async def _one_reaction(reply: AsyncIterator[Spoken], timing: TurnTiming) -> AsyncIterator[Spoken]:
+    """The closing turn's reaction, which comes before the scripted closer: its first sentence that asks
+    nothing (_asks). A sentence that asks something isn't spoken, and nor is any after the first. The
+    reply is still read to its end, so a [step out] after them steps out, and dropping a sentence never
+    asks the model again. The turn records reply_repair "dropped_question", unless the claim guard,
+    which comes first, dropped a claim."""
+    kept, asked, more = False, False, False
+    async with aclosing(reply) as sentences:
+        async for spoken in sentences:
+            if _asks(spoken):
+                asked = True
+            elif kept:
+                more = True
+            else:
+                kept = True
+                yield spoken
+    if asked:
+        logger.warning("chat model %s asked a question in the closing reaction, dropped it", timing.model)
+        if timing.reply_repair != "dropped_claim":
+            timing.reply_repair = "dropped_question"
+    if more:
+        logger.warning("chat model %s reacted in more than one sentence on the closing turn, kept the first", timing.model)
+
+
 async def _wren(
     convo: Conversation, user_text: str | None, retrieve: Retrieve, chat: Chat, timing: TurnTiming, tuning: Tuning,
     utcnow: Callable[[], datetime], *, step_out: str | None = None, unsaved: Sequence[HistoryTurn] = (),
@@ -481,7 +528,7 @@ async def _wren(
     if user_text is None:  # the opening acts on no cue
         cues, fallback = None, (FIRST_OPENING_LINE if convo.background.last_session_at is None else OPENING_LINE)
     elif step_out is not None:  # nor does the reply that just stepped out: a [mock] there is dropped
-        cues, fallback = None, RETRY_LINE
+        cues, fallback = None, (CRISIS_FALLBACK if step_out == "crisis" else RETRY_LINE)
     else:
         cues, fallback = CueFilter(), RETRY_LINE
     # A reply with the mock in view, after a step-out or on a later turn that can debrief, gets more room than the
@@ -558,8 +605,10 @@ async def _pick_back_up(
     convo: Conversation, mock: Mock, chat: Chat, timing: TurnTiming, tuning: Tuning
 ) -> AsyncIterator[Spoken]:
     """Resume the paused mock, with the same interviewer and question count: Wren's switch line, then the
-    interviewer asks the question it was on again. If that call fails twice, it says its last line as saved."""
-    mock = replace(mock, on=True, resumable=False, last_step_out=None)
+    interviewer asks the question it was on again. If that call fails twice, it says its last line as saved.
+    That line is saved in role, but it isn't a new question, so reasks counts it out (_questions_asked). An
+    undo puts back the mock as it was, with its count."""
+    mock = replace(mock, on=True, resumable=False, last_step_out=None, reasks=mock.reasks + 1)
     convo.mock, timing.switch = mock, "mock_resume"
     for spoken in _switch_lines(STEP_BACK_IN):
         yield spoken

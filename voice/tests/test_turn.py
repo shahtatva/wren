@@ -10,6 +10,7 @@ from app.conversation import Background, Conversation, Retrieved, reply_runs
 from app.memory.types import PipelineEntry, Profile, SearchHit
 from app.mock import CLOSER, Mock, Target
 from app.turn import (
+    CRISIS_FALLBACK,
     INTERVIEW_RESUME,
     INTERVIEW_START,
     RETRY_LINE,
@@ -465,6 +466,98 @@ def test_the_closing_turn_reacts_then_asks_the_scripted_last_question():
     failed = ScriptedChat(["I"], ["I"])  # no whole sentence, twice
     out = asyncio.run(_collect(run_turn(in_mock(3), "My answer.", retrieve=_no_memories, chat=failed, timing=TurnTiming(5, "mock", "voice"))))
     assert out == ["Thanks.", CLOSER]
+
+
+def test_the_closing_turn_drops_a_question_in_the_reaction():
+    # The scripted closer is the turn's one question.
+    chat, timing = ScriptedChat(["Thanks for walking me through that. ", 'Did they ever ask you "why now?"']), TurnTiming(5, "mock", "voice")
+    out = asyncio.run(_collect(run_turn(in_mock(3), "My answer.", retrieve=_no_memories, chat=chat, timing=timing)))
+    assert out == ["Thanks for walking me through that.", CLOSER] and timing.reply_repair == "dropped_question"
+    chat, timing = ScriptedChat(["Got it. ", "Tell me more about that."]), TurnTiming(5, "mock", "voice")
+    out = asyncio.run(_collect(run_turn(in_mock(3), "My answer.", retrieve=_no_memories, chat=chat, timing=timing)))
+    assert out == ["Got it.", CLOSER] and timing.reply_repair == "dropped_question"
+
+
+@pytest.mark.parametrize("reply", [
+    ["How did the team take it?"], ["Okay, tell me how that went."], ["Walk me through the numbers."],
+    ["What happened next? ", "Describe the result."],
+])
+def test_a_reaction_that_only_asks_gives_thanks_with_no_second_call(reply):
+    chat, timing = ScriptedChat(reply), TurnTiming(5, "mock", "voice")
+    out = asyncio.run(_collect(run_turn(in_mock(3), "My answer.", retrieve=_no_memories, chat=chat, timing=timing)))
+    assert out == ["Thanks.", CLOSER] and [s.mock for s in out] == [1, 1]
+    assert chat.calls == 1 and timing.reply_repair == "dropped_question"
+
+
+def test_the_closing_reaction_keeps_one_sentence_that_asks_nothing():
+    chat, timing = ScriptedChat(["How did they take it? ", "Thanks for sharing that. ", "It's a clear example."]), TurnTiming(5, "mock", "voice")
+    out = asyncio.run(_collect(run_turn(in_mock(3), "My answer.", retrieve=_no_memories, chat=chat, timing=timing)))
+    assert out == ["Thanks for sharing that.", CLOSER]
+    chat, timing = ScriptedChat(["Thanks for that. ", "It's a clear example."]), TurnTiming(5, "mock", "voice")
+    out = asyncio.run(_collect(run_turn(in_mock(3), "My answer.", retrieve=_no_memories, chat=chat, timing=timing)))
+    assert out == ["Thanks for that.", CLOSER] and timing.reply_repair is None  # nothing asked, only cut to one
+
+
+def test_on_the_closing_turn_the_claim_guard_comes_before_the_question_check():
+    chat, timing = ScriptedChat(["I'm a real person, aren't I?"], ["Thanks for that."]), TurnTiming(5, "mock", "voice")
+    out = asyncio.run(_collect(run_turn(in_mock(3), "My answer.", retrieve=_no_memories, chat=chat, timing=timing)))
+    assert out == ["Thanks for that.", CLOSER] and chat.calls == 2 and timing.reply_repair == "dropped_claim"
+
+
+def test_a_question_before_the_interviewers_cue_still_steps_out():
+    convo = in_mock(3)
+    out, chat, timing, _ = step_out_turn(convo, "Honestly, I'm not doing great these days.",
+                                         ["Are you okay? [step out]"], ["I'm here. What's going on?"])
+    assert out == ["Stepping out.", "It's me again.", "I'm here.", "What's going on?"]
+    assert timing.switch == "step_out:cue" and convo.mock.last_step_out == "cue" and chat.calls == 2
+    assert f"{convo.mock.name}: Are you okay?" not in chat.messages[1][0]["content"]  # never said, so not in the mock
+
+
+def say(convo: Conversation, text: str, *replies) -> tuple[list, ScriptedChat, TurnTiming]:
+    """One turn, saved as POST /turn saves it: their words, then one Wren turn per speaker."""
+    floor = convo.mock
+    chat, timing = ScriptedChat(*replies), TurnTiming(9, convo.turn_mode, "text")
+    out = asyncio.run(_collect(run_turn(convo, text, retrieve=_no_memories, chat=chat, timing=timing)))
+    convo.add("user", text, mock=floor.id if floor is not None and floor.on else None)
+    for words, mock in reply_runs((spoken, spoken.mock) for spoken in out):
+        convo.add("wren", words, mock=mock, in_role=mock is not None)
+    return out, chat, timing
+
+
+def test_a_pickup_after_the_third_question_still_gets_the_closing_turn():
+    # The pickup asks its question again, saved in role. It's not a new question, so the closing turn still comes.
+    convo = in_mock(3)
+    say(convo, "Wren, can I ask you something?", ["Of course. What's on your mind?"])
+    _, _, timing = say(convo, "Never mind, let's keep going.", ["[mock]"], ["So, back to it. Question 3?"])
+    assert timing.switch == "mock_resume" and convo.mock.reasks == 1
+    out, chat, _ = say(convo, "My answer.", ["Thanks for walking me through that."])
+    assert out == ["Thanks for walking me through that.", CLOSER]
+    assert "React to their answer in one short sentence" in chat.messages[0][0]["content"]
+
+
+def test_a_pickup_after_the_first_question_keeps_the_count():
+    convo = in_mock(1)
+    say(convo, "Wren, can I ask you something?", ["Of course. What's on your mind?"])
+    say(convo, "Never mind, let's keep going.", ["[mock]"], ["Back to it. Walk me through your background."])
+    _, chat, _ = say(convo, "My answer.", ["Okay. ", "Why Sprout?"])
+    assert "- Next: Ask your next question. You've asked 1 of 4.\n" in chat.messages[0][0]["content"]
+
+
+def test_a_question_asked_again_doesnt_count_toward_the_cap():
+    convo = in_mock(6)
+    convo.mock = replace(SPROUT_MOCK, reasks=1)  # one of its six lines in role asked a question again
+    _, chat, timing, _ = step_out_turn(convo, "Thanks!", ["Thanks for your time. [step out]"], ["Good work. How did that feel?"])
+    assert chat.calls == 2 and timing.switch == "step_out:done"  # the interviewer still had its turn
+
+
+def test_a_crisis_reply_that_fails_twice_still_gives_real_help():
+    assert CRISIS_FALLBACK == (
+        "If you're in danger right now, call nine one one. You can call or text nine eight eight any time."
+    )
+    out, _, timing, _ = step_out_turn(in_mock(2), "I keep thinking about killing myself.", ["I"], ["I"])
+    assert out == ["Stepping out.", "It's me again.", CRISIS_FALLBACK] and timing.reply_repair == "gave_up"
+    out, _, _, _ = step_out_turn(in_mock(2), "Are you a bot?", ["I"], ["I"])  # any other step-out asks again
+    assert out[-1] == RETRY_LINE
 
 
 def test_a_step_out_on_the_closing_turn_still_steps_out():

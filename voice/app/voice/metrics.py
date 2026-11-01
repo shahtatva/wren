@@ -48,7 +48,9 @@ class TurnTiming:
     context_tokens: int | None = None
     outcome: str | None = None  # complete, interrupted, continued, failed
     barge_in_ms: float | None = None  # the browser's onset-to-pause time, when interrupted
-    reply_repair: str | None = None  # dropped_tail, dropped_stacked, dropped_claim, retried or gave_up: see run_turn
+    # dropped_tail, dropped_stacked, dropped_claim, dropped_question (the closing turn's reaction), retried or
+    # gave_up: see run_turn
+    reply_repair: str | None = None
     finish_reason: str | None = None  # why the model's stream ended: "length" means the token cap
     completion_tokens: int | None = None  # reasoning plus reply, as the provider counted them
     switch: str | None = None  # mock_start, mock_resume or step_out:<why>; ":undone" follows if nobody heard it
