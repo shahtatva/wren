@@ -11,9 +11,9 @@ Stepping out. step_out_reason() reads what the user just said and says why Wren 
 from the interviewer, or None to keep the interview going. The first match wins, in this order:
 crisis, ai, stop, pause. Safety comes first, so nobody in danger is taken for someone asking for
 a pause. The code only acts on plain requests, because a wrong guess ends someone's practice:
-loose phrases, and "step out" on its own, count only in a short message, so a long answer about
-stepping out of a comfort zone, or "we had to stop the launch", goes on. The interviewer's own
-[step out] is the backstop for anything looser.
+loose phrases, plain controls like "Stop." or "Time out.", and "step out" on its own, count only in
+a short message, so a long answer about stepping out of a comfort zone, or "we had to stop the
+launch", goes on. The interviewer's own [step out] is the backstop for anything looser.
 """
 
 import re
@@ -183,9 +183,13 @@ def interviewer_title(stage: str | None) -> str:
     return "interviewer"
 
 
-def interviewer_name(session_id: str, mock_id: int) -> str:
-    """Invented, and the same for the same mock in any process, which hash() wouldn't be."""
-    return INTERVIEWER_NAMES[zlib.crc32(f"{session_id}:{mock_id}".encode()) % len(INTERVIEWER_NAMES)]
+def interviewer_name(session_id: str, mock_id: int, avoid: str | None = None) -> str:
+    """Invented, and the same for the same mock in any process, which hash() wouldn't be. avoid is the user's own
+    first name: if the hash picks it, compared case-blind, the next name in the list takes its place."""
+    i = zlib.crc32(f"{session_id}:{mock_id}".encode()) % len(INTERVIEWER_NAMES)
+    if avoid is not None and INTERVIEWER_NAMES[i].casefold() == avoid.strip().casefold():
+        i = (i + 1) % len(INTERVIEWER_NAMES)
+    return INTERVIEWER_NAMES[i]
 
 
 _SHORT = 8  # words. Loose phrases count only in a message this short.
@@ -193,35 +197,41 @@ _APOSTROPHES = str.maketrans("\u2018\u2019", "''")
 
 # Suicide, self-harm or danger. Idioms and job stories are not it: "the deadline was killing me", "a hill
 # I want to die on", "in danger of missing it", "I felt like dying when the demo crashed", "better off
-# without me micromanaging", "I don't feel safe speaking up", "I don't want to live in New York". "I
-# don't want to be here anymore" and "I can't go on" are left to the interviewer: they are also real
-# answers to "why are you leaving?"
+# without me micromanaging", "I don't feel safe speaking up", "I don't feel safe committing to that
+# timeline", "I don't want to live in New York". "I don't want to be here anymore" and "I can't go on"
+# are left to the interviewer: they are also real answers to "why are you leaving?"
 _CRISIS = re.compile(
     r"\bsuicid(?:e|al)|\bself[\s-]?harm"
     r"|\b(?:kill|killing|hurt|hurting|harm|harming|cut|cutting)\s+my\s?self\b"
     r"|\b(?:end|ending|take|taking)\s+my\s+(?:own\s+)?life\b|\bend\s+it\s+all\b"
-    r"|\b(?:want(?:ed)?|wanna)\s+to\s+die\b(?!\s+on\b)|\bwish\s+i\s+(?:was|were)\s+dead\b"
+    r"|\b(?:want(?:ed)?\s+to|wanna)\s+die\b(?!\s+on\b)|\bwish\s+i\s+(?:was|were)\s+dead\b"
     r"|\bbetter\s+off\s+dead\b|\bno\s+reason\s+to\s+live\b"
-    r"|\b(?:don't|do\s+not|no\s+longer)\s+(?:want|wanna)\s+to\s+"
+    r"|\b(?:don't|do\s+not|no\s+longer)\s+(?:want\s+to|wanna)\s+"
     r"(?:be\s+alive|exist|live(?=\s*(?:[.!?,]|$|any\s*(?:more|longer))))"
     r"|\b(?:i'm|i\s+am|i\s+feel)\s+(?:not\s+safe|unsafe|in\s+(?:real\s+|serious\s+)?danger\b(?!\s+of\b))"
-    r"|\bi\s+(?:don't|do\s+not)\s+feel\s+safe(?=\s*(?:[.!?,]|$|(?:right\s+)?now\b|at\s+home\b|here\b))"
+    # "I really don't feel safe", where the clause ends, or with an ending that's about their safety
+    r"|\bi\s+(?:(?:really|just|honestly|actually|still|truly|genuinely)\s+)?(?:don't|do\s+not)\s+feel\s+safe"
+    r"(?=\s*(?:[.!?,]|$)|\s+(?:(?:right\s+)?now|at\s+home|here|any\s*more|at\s+all|tonight"
+    r"|(?:with|around)\s+(?:him|her|them)|in\s+my\s+(?:own\s+)?(?:home|house))\b)"
     r"|\bfeel\s+like\s+dying\b|\bbetter\s+off\s+without\s+me(?=\s*(?:[.!?,]|$))",
     re.IGNORECASE,
 )
 
-# "Are you an AI?", "Am I talking to a bot?", "Is this a real recruiter?". A bare word like "real" or
-# "AI" counts only where the question ends, so "Is this an AI company?" and "Are you real busy?"
-# are not it.
+# "Are you an AI?", "Am I talking to a bot?", "Is this a real recruiter?", "Is there a real person there?". A
+# bare word like "real" or "AI" counts only where the question ends, so "Is this an AI company?", "Are you
+# real busy?" and "Is there a real person who reviews the applications?" are not it.
 _ASKED = r"(?=\s*(?:[?.!,;]|$)|\s+(?:or|right|really|though|then)\b)"
 _REAL_ONE = r"(?:real|actual)\s+(?:person|human(?:\s+being)?|recruiter|interviewer|hiring\s+manager)\b"
-_HUMAN = rf"(?:{_REAL_ONE}|(?:real|actual|human(?:\s+being)?|person){_ASKED})"
+_THERE = r"(?:\s+(?:there|here|on\s+the\s+other\s+end))?"  # "Is this a person on the other end?"
+_HUMAN = rf"(?:{_REAL_ONE}|(?:real|actual|human(?:\s+being)?|person){_THERE}{_ASKED})"
 _MACHINE = rf"(?:ai|a\.i\.|bots?|chat\s?bots?|robots?|machine|computer|llm|chat\s?gpt){_ASKED}"
 _AI = re.compile(
     rf"\bare\s+you\s+(?:even\s+|actually\s+|really\s+|just\s+)?(?:an?\s+)?(?:{_HUMAN}|{_MACHINE})"
     rf"|\bam\s+i\s+(?:talking|speaking|chatting)\s+(?:to|with)\s+(?:an?\s+)?(?:{_HUMAN}|{_MACHINE})"
-    rf"|\bis\s+(?:this|that|it)\s+(?:an?\s+)?(?:{_HUMAN}|{_MACHINE})"
-    rf"|\byou(?:'re|\s+are)\s+(?:actually\s+|really\s+|just\s+)?(?:an?\s+)?{_MACHINE}",
+    rf"|\bis\s+(?:this|that|it)(?:\s+thing)?\s+(?:an?\s+)?(?:{_HUMAN}|{_MACHINE})"
+    rf"|\bis\s+there\s+(?:an?\s+)?(?:(?:real|actual)\s+)?(?:person|human(?:\s+being)?){_THERE}{_ASKED}"
+    rf"|\byou(?:'re|\s+are)\s+(?:actually\s+|really\s+|just\s+)?(?:an?\s+)?{_MACHINE}"
+    rf"|\byou(?:'re|\s+are)\s+not\s+(?:an?\s+)?{_HUMAN}",  # "You're not a real person, are you?"
     re.IGNORECASE,
 )
 
@@ -255,15 +265,35 @@ _LOOSE_STOP = re.compile(
     rf"|\bthat'?s\s+enough{_STOP_ENDS}",
     re.IGNORECASE,
 )
+# Plain controls that are the whole message, so they count only in a short one: "Stop.", "Okay, stop.",
+# "Wren, stop.", "Pause the interview.", "Can we take a break?", "Time out.". A short answer that only
+# opens with the word, "Stop, and listen to the customer.", or holds it, "We had to pause the launch.",
+# goes on.
+_OPENERS = r"(?:(?:hey|hi|okay|ok|so|um|uh|sorry|wait|actually|oh|please|just|wren)\W+)*"
+_TRAILERS = (
+    r"(?:\W+(?:please|now|wren|it|(?:right\s+)?(?:here|there)"
+    r"|for\s+(?:now|today|a\s+(?:second|sec|minute|moment|bit))))*"
+)
+_PLAIN_STOP = re.compile(rf"^\W*{_OPENERS}(?:stop\W+)*stop{_TRAILERS}\W*$", re.IGNORECASE)
+_PLAIN_PAUSE = re.compile(
+    rf"^\W*{_OPENERS}(?:(?:(?:can|could)\s+(?:we|you|i)|let'?s|i\s+(?:need|want)\s+to|i'd\s+like\s+to)\s+)?"
+    r"(?:pause(?:\s+(?:the|this|our)\s+(?:mock(?:\s+interview)?|interview|practice|session|role[\s-]?play))?"
+    r"|take\s+a\s+(?:quick\s+|short\s+)?break|time[\s-]?out)"
+    rf"{_TRAILERS}\W*$",
+    re.IGNORECASE,
+)
 
 # "Step out" is a request in a short message, or in any message when it names the role, mock or
 # interview. Longer, it is an answer: "I had to step out of my comfort zone to lead that project", "you
 # sometimes have to step out of your role and help".
 _STEP_OUT = re.compile(r"\bstep\s+out\b", re.IGNORECASE)
 _STEP_OUT_OF_ROLE = re.compile(r"\bstep\s+out\s+of\s+(?:the\s+)?(?:role|mock|interview)\b", re.IGNORECASE)
-# A message that opens by speaking to Wren, after an opener or not: "Wren, can I ask you something?"
+# A message that opens by speaking to Wren, after an opener or not: "Wren, can I ask you something?", "Okay,
+# Wren. Quick question." Punctuation or the end of the message has to follow the name, so "Wren Kitchens is
+# my dream company" is an answer.
 _ADDRESSES_WREN = re.compile(
-    r"^\W*(?:(?:hey|hi|hello|okay|ok|um|uh|so|sorry|wait|hold\s+on|actually|oh)\W+)*wren\b", re.IGNORECASE
+    r"^\W*(?:(?:hey|hi|hello|okay|ok|um|uh|so|sorry|wait|hold\s+on|actually|oh)\W+)*wren(?=\s*(?:[,.!?]|$))",
+    re.IGNORECASE,
 )
 
 
@@ -276,8 +306,11 @@ def step_out_reason(text: str) -> StepOutReason | None:
         return "crisis"
     if _AI.search(text):
         return "ai"
-    if _STOP.search(text) or (short and _LOOSE_STOP.search(text)):
+    if _STOP.search(text) or (short and (_LOOSE_STOP.search(text) or _PLAIN_STOP.match(text))):
         return "stop"
-    if _ADDRESSES_WREN.match(text) or _STEP_OUT_OF_ROLE.search(text) or (short and _STEP_OUT.search(text)):
+    if (
+        _ADDRESSES_WREN.match(text) or _STEP_OUT_OF_ROLE.search(text)
+        or (short and (_STEP_OUT.search(text) or _PLAIN_PAUSE.match(text)))
+    ):
         return "pause"
     return None

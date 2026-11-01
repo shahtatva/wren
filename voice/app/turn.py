@@ -334,6 +334,12 @@ def build_messages(
     return _alternating(messages)
 
 
+def _first_name(profile: Profile | None) -> str | None:
+    """The first word of their name, which the interviewer's name mustn't be."""
+    found = re.search(r"[^\W\d_]+", (profile.display_name or "") if profile is not None else "")
+    return found.group() if found else None
+
+
 def _candidate(profile: Profile | None) -> str:
     """Their name and background, as an interviewer would read them on a resume, or "not given"."""
     if profile is None:
@@ -529,7 +535,8 @@ async def _hand_off(
     roles = background.profile.target_roles if background.profile else ()
     target = resolve_target(plain_company(cue.company), background.pipeline, roles)
     mock_id = convo.next_mock_id()
-    mock = Mock(mock_id, interviewer_name(convo.session_id, mock_id), interviewer_title(target.stage), target)
+    name = interviewer_name(convo.session_id, mock_id, avoid=_first_name(background.profile))
+    mock = Mock(mock_id, name, interviewer_title(target.stage), target)
     convo.mock, timing.switch = mock, "mock_start"
     for spoken in _switch_lines(STEP_IN):
         yield spoken

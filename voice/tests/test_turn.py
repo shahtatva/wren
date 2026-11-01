@@ -409,6 +409,18 @@ def test_a_cue_closes_the_stream_so_generation_stops():
     assert out[:2] == ["Sure.", "Okay, stepping into role."] and "I'm Dana." not in out
 
 
+@pytest.mark.parametrize("display_name", ["omar Haddad", "Omar.", " OMAR"])
+def test_the_interviewer_never_has_their_first_name(display_name):
+    convo = conversation()  # session s9, whose first interviewer would be Omar
+    convo.background = replace(convo.background, profile=replace(convo.background.profile, display_name=display_name))
+    chat = ScriptedChat(["[mock: Sprout]"], ["Walk me through your background."])
+    asyncio.run(_collect(run_turn(convo, "Can we practice for Sprout?", retrieve=_no_memories, chat=chat, timing=TurnTiming(3, "checkin", "text"))))
+    assert convo.mock.name == "Lena"
+    nameless = Conversation(session_id="s9", user_id=USER, mode="checkin", tz="UTC")  # no profile: the hashed name
+    asyncio.run(_collect(run_turn(nameless, "Let's practice.", retrieve=_no_memories, chat=ScriptedChat(["[mock]"], ["Hi."]), timing=TurnTiming(3, "checkin", "text"))))
+    assert nameless.mock.name == "Omar"
+
+
 def test_the_cue_names_the_company_plainly():
     # A company that isn't in the pipeline is spoken as the cue named it, and spoken lines skip clean().
     chat, convo = ScriptedChat(["[mock: Acme (Series B)]"], ["Tell me about yourself."]), conversation()

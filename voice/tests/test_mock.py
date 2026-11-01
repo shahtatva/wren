@@ -152,6 +152,13 @@ def test_interviewer_names_dont_change_between_processes():
     assert interviewer_name("s9", 1) == "Omar" and interviewer_name("maya-s03", 1) == "Grace"
 
 
+def test_an_interviewer_never_has_the_users_first_name():
+    # The hashed name gives way to the next one in the list, compared case-blind.
+    assert interviewer_name("s9", 1, avoid="Omar") == "Lena" and interviewer_name("s9", 1, avoid="oMAR") == "Lena"
+    assert interviewer_name("s6", 2) == "Lena" and interviewer_name("s6", 2, avoid="lena") == "Dana"  # wraps around
+    assert interviewer_name("s9", 1, avoid="Maya") == "Omar" and interviewer_name("s9", 1, avoid=None) == "Omar"
+
+
 def test_the_spoken_lines_and_names_are_the_agreed_copy():
     assert STEP_IN == ("Okay, stepping into role.",)
     assert STEP_BACK_IN == ("Okay, stepping back into role.",)
@@ -272,4 +279,50 @@ def test_distress_is_never_taken_for_a_request_to_stop():
     "I felt like dying when the demo crashed in front of the client",
 ])
 def test_more_everyday_words_in_an_answer_dont_step_out(text):
+    assert step_out_reason(text) is None
+
+
+@pytest.mark.parametrize("text", [
+    # "wanna", as speech-to-text writes it
+    "I wanna die.", "I just wanna die.", "I don't wanna live anymore.", "I don't wanna be alive.",
+    "I don’t wanna exist.",
+    # "I don't feel safe" after an adverb, or with a plainer ending
+    "I really don't feel safe.", "I just don't feel safe right now.", "I don't feel safe anymore.",
+    "I don't feel safe any more.", "I don't feel safe at all.", "I don't feel safe tonight.",
+    "I don't feel safe with him.", "I don't feel safe around her.", "I don't feel safe with them.",
+    "I don't feel safe in my own home.", "I don't feel safe in my house.",
+])
+def test_more_ways_to_say_its_a_crisis(text):
+    assert step_out_reason(text) == "crisis"
+
+
+@pytest.mark.parametrize("text, reason", [
+    # plain controls, which count only in a short message
+    ("Stop.", "stop"), ("Stop!", "stop"), ("Stop please.", "stop"), ("Okay, stop.", "stop"), ("Wren, stop.", "stop"),
+    ("Please stop.", "stop"), ("Stop, stop.", "stop"), ("Wren stop", "stop"),
+    ("Pause.", "pause"), ("Pause the interview.", "pause"), ("Can we pause the interview?", "pause"),
+    ("Can we take a break?", "pause"), ("Time out.", "pause"), ("Let's pause for a second.", "pause"),
+    # other ways to ask whether it's an AI
+    ("You're not a real person, are you?", "ai"), ("Is there a real person there?", "ai"),
+    ("Is this a person on the other end?", "ai"), ("Is this thing a bot?", "ai"),
+])
+def test_plain_controls_and_questions_bring_wren_back(text, reason):
+    assert step_out_reason(text) == reason
+
+
+@pytest.mark.parametrize("text", [
+    "Wren Kitchens is my dream company, honestly.",  # speaking to Wren needs a comma, a "?" or nothing after "wren"
+    "I don't feel safe committing to that timeline",
+    "I really don't feel safe speaking up without data.",
+    "It wasn't a hill I wanna die on, so I let it go.",
+    # a control word that opens a short answer, or sits inside one
+    "Stop, and listen to what the customer needs.", "I pause, then I ask what they need.",
+    "The API would time out under load.", "We had to pause the launch.",
+    "I take a break every ninety minutes.",
+    # a plain control inside a long answer
+    "When the build broke I told the team stop, pause the release, and take a break to regroup.",
+    # a real person, in a question about the job
+    "Is there a real person who reviews the applications?", "Is there a person on the team who owns onboarding?",
+])
+def test_plain_controls_count_only_on_their_own(text):
     assert step_out_reason(text) is None
