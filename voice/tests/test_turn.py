@@ -905,19 +905,33 @@ def test_the_interviewer_card_talks_for_the_ear():
     "I'm Jordan, a real person at Sprout Social.", "Yes, I'm Jordan, the real recruiter here.", "No, I'm not an AI.",
     "I'm not a bot.", "Yes, I'm real.", "I'm actually human.", "I'm just a person.", "I am really a person.",
     "I'm a real live person.",
+    # Worded other ways.
+    "No, I'm not a language model.", "I'm not a large language model.", "No, I'm not an A.I.", "I'm not an LLM.",
+    "I'm a human recruiter.", "I'm a human interviewer at Sprout.", "I'm definitely human.", "I'm totally real.",
+    "I'm really a person.", "I'm Jordan, a human recruiter at Sprout Social.",
 ])
 def test_a_claim_to_be_human_is_caught(text):
-    assert claims_to_be_human(text)
+    assert claims_to_be_human(text) and claims_to_be_human(text, interviewer="Jordan")
 
 
 @pytest.mark.parametrize("text", [
     "I'm not a real person.", "I'm an AI, not a human.", "I'm Wren.", "I'm the recruiter at Sprout Social.",
     "I'm actually an AI.", "I'm Jordanna's coach.", "I'm not human.", "I'm Wren, not Jordan.",
     "Try opening with: I'm a person who turns complaints into fixes.", "I'm a human resources partner at Acme.",
-    "I'm Jordan's coach.",
+    "I'm Jordan's coach.", "It's me. I'm Wren, the real one.", "I'm not a language person, I'm a numbers person.",
 ])
 def test_saying_its_an_ai_is_not_a_claim_to_be_human(text):
     assert not claims_to_be_human(text, interviewer="Jordan")
+
+
+def test_a_dropped_claim_is_logged_cut_short_so_misses_can_be_checked(caplog):
+    claim = "Yes, I'm the real recruiter here, and I've been hiring for the sales team at Sprout Social for years."
+    assert len(claim) > 80
+    out = asyncio.run(_collect(run_turn(
+        in_mock(2), "My answer.", retrieve=_no_memories, chat=ScriptedChat([claim], ["Why Sprout?"]),
+        timing=TurnTiming(5, "mock", "voice"),
+    )))
+    assert out == ["Why Sprout?"] and claim[:80] in caplog.text and claim[:81] not in caplog.text
 
 
 def test_wren_speaking_as_the_interviewer_by_name_is_a_claim():

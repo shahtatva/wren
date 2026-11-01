@@ -124,16 +124,20 @@ _ASK_VERB = re.compile(
 # A spoken line that claims to be human or a real person. Normalized to straight apostrophes first.
 _APOSTROPHES = str.maketrans("‘’", "''")
 _I_AM = r"\bi(?:'m|\s+am)\s+"
-_SO = r"(?:(?:just|really|actually|truly)\s+)?"  # "I'm actually human", "I am really a person"
+# "I'm actually human", "I am really a person", "I'm definitely human", "I'm totally real"
+_SO = r"(?:(?:just|really|actually|truly|definitely|totally|certainly|absolutely|completely|honestly)\s+)?"
 _REAL_ONE = r"(?:real|actual)\s+(?:live\s+)?(?:person|human(?:\s+being)?|recruiter|interviewer|hiring\s+manager|one)\b"
+_HUMAN_ONE = r"human\s+(?:recruiter|interviewer|hiring\s+manager)\b"  # "I'm a human recruiter"
+_ONE = rf"(?:{_REAL_ONE}|{_HUMAN_ONE})"
 _CLAUSE_ENDS = r"(?=\s*(?:[.!?,;:]|$))"  # so "I'm a person who..." and "a human resources partner" aren't claims
+_MACHINE = r"(?:ai|a\.i\.|bot|chat\s?bot|robot|machine|computer|program|llm|(?:large\s+)?language\s+model)(?!\w)"
 _CLAIM = re.compile(
-    _I_AM + _SO + r"(?:(?:a|an|the)\s+)?" + _REAL_ONE  # "I'm the real recruiter", "I'm a real live person"
-    + r"|" + _I_AM + r"(?-i:[A-Z][a-z]+),\s+(?:a|an|the)\s+" + _REAL_ONE  # "I'm Jordan, a real person at Sprout"
+    _I_AM + _SO + r"(?:(?:a|an|the)\s+)?" + _ONE  # "I'm the real recruiter", "I'm a real live person"
+    # "I'm Jordan, a real person at Sprout". Wren is the real Wren: "I'm Wren, the real one."
+    + r"|" + _I_AM + r"(?!wren\b)(?-i:[A-Z][a-z]+),\s+(?:a|an|the)\s+" + _ONE
     + r"|" + _I_AM + _SO + r"(?:a\s+)?(?:human(?:\s+being)?|person)" + _CLAUSE_ENDS  # "I'm just a person."
     + r"|" + _I_AM + _SO + r"real" + _CLAUSE_ENDS  # "Yes, I'm real."
-    # "No, I'm not an AI.", "I'm not a bot."
-    + r"|" + _I_AM + r"not\s+(?:an?\s+)?(?:ai|a\.i\.|bot|chat\s?bot|robot|machine|computer|program)\b",
+    + r"|" + _I_AM + r"not\s+(?:an?\s+)?" + _MACHINE,  # "No, I'm not an AI.", "I'm not a language model."
     re.IGNORECASE,
 )
 
@@ -142,9 +146,10 @@ Retrieve = Callable[[str], Awaitable[Retrieved]]
 
 def claims_to_be_human(text: str, interviewer: str | None = None) -> bool:
     """Whether a line matches the patterns of a claim to be human or a real person: "I'm the real recruiter",
-    "I'm just a person.", "No, I'm not an AI." interviewer is the mock's name, for Wren's own lines: "I'm
-    Jordan" from Wren speaks as the interviewer with no switch ("I'm Jordan's coach" doesn't). "I'm not a
-    real person", "I'm an AI, not a human" and "I'm a person who turns complaints into fixes" don't count."""
+    "I'm a human interviewer", "I'm just a person.", "I'm totally real.", "No, I'm not an AI.", "I'm not a
+    language model." interviewer is the mock's name, for Wren's own lines: "I'm Jordan" from Wren speaks as
+    the interviewer with no switch ("I'm Jordan's coach" doesn't). "I'm not a real person", "I'm an AI, not a
+    human", "I'm Wren, the real one" and "I'm a person who turns complaints into fixes" don't count."""
     text = text.translate(_APOSTROPHES)
     if _CLAIM.search(text):
         return True
@@ -666,36 +671,36 @@ async def _reply(
     timing.context_tokens = (timing.context_tokens or 0) + sum(len(m["content"]) for m in messages) // 4
     call.llm_start = clock.now()
     try:
-        claimed = False  # the attempt before was cut at a claim to be human
+        claim: str | None = None  # the sentence the attempt before was cut at, a claim to be human
         for attempt in range(2):
             found.reset()
             spoke = False
             # The second ask runs at low reasoning (retry=True) after a reply with no whole sentence, which reasoning
             # that filled the budget can cause. After a dropped claim it keeps its reasoning.
-            low = attempt > 0 and not claimed
+            low = attempt > 0 and claim is None
             stream = chat(messages, call, retry=True, **cap) if low else chat(messages, call, **cap)
-            claimed = False
+            claim = None
             async with aclosing(_whole_sentences(_until_cue(stream, found), call)) as segments:
                 async for text in segments:
                     if claims_to_be_human(text, name_to_guard):  # leaving the loop closes the stream
                         found.reset()  # a cue after it goes too
-                        claimed, call.reply_repair = True, "dropped_claim"
+                        claim, call.reply_repair = text, "dropped_claim"
                         break
                     spoke = True
                     yield Spoken(text, mock=mock)
             if found.cue is not None and (cues is None or found.cue.kind != own_cue):
                 logger.warning("chat model %s wrote %s where it isn't acted on, dropped it", call.model, found.cue)
                 found.reset()
-            if claimed:
+            if claim is not None:  # the sentence, cut short, so a line the patterns took wrongly can be found later
                 logger.warning(
-                    "chat model %s claimed to be human: dropped the claim and what followed%s",
-                    call.model, "" if spoke else (", again" if attempt else ", asking again"),
+                    "chat model %s claimed to be human, dropped %r and what followed%s",
+                    call.model, claim[:80], "" if spoke else (", again" if attempt else ", asking again"),
                 )
             if spoke or found.cue is not None:
                 if attempt and call.reply_repair != "dropped_claim":  # a dropped claim is the repair to see
                     call.reply_repair = "retried"
                 return
-            if not claimed:
+            if claim is None:
                 logger.warning(
                     "chat model %s sent no whole sentence (finish %s)%s",
                     call.model, call.finish_reason, " again" if attempt else ", asking again",
