@@ -51,12 +51,12 @@ from typing import Literal, Protocol, Self
 from zoneinfo import ZoneInfo
 
 from app.conversation import Conversation, HistoryTurn, Retrieved
-from app.memory.types import PipelineEntry, Profile, SearchHit
+from app.memory.types import FeedbackNote, PipelineEntry, Profile, SearchHit
 from app.mock import (
     CLOSER, CLOSER_LEAD, STEP_BACK_IN, STEP_IN, STEP_OUT, Cue, CueFilter, Mock, interviewer_name, interviewer_title,
     plain_company, resolve_target, same_company, step_out_reason,
 )
-from app.opener import FIRST_OPENING_LINE, OPENING_LINE
+from app.opener import FIRST_OPENING_LINE, OPENING_LINE, Lead, choose_lead
 from app.voice import clock
 from app.voice.metrics import TurnTiming
 from app.voice.segment import Segmenter
@@ -211,10 +211,44 @@ def _clock_time(t: time | datetime) -> str:
 
 def _day(day: date, today: date) -> str:
     label = f"{day:%A}, {day:%B} {day.day}"
-    return label + {0: " (today)", 1: " (tomorrow)"}.get((day - today).days, "")
+    return label + {-1: " (yesterday)", 0: " (today)", 1: " (tomorrow)"}.get((day - today).days, "")
 
 
-def _signals(convo: Conversation, now_local: datetime, opening: bool) -> str:
+def _sentence(text: str) -> str:
+    """The text with a closing period, unless it already ends a sentence."""
+    text = text.strip()
+    return text if ends_a_sentence(text) else f"{text}."
+
+
+# The opening's shape, whatever it leads with: the user's limit, and wren-voice's rule against guilt about time away.
+OPENING_SHAPE = (
+    "- One or two sentences, under twenty words in total. Start with the point, with no hello sentence first."
+    " Their name is fine."
+)
+NO_TIME_AWAY = "- Don't mention how long it's been since you last talked."
+
+
+def _opening_lines(lead: Lead, today: date) -> list[str]:
+    """The opening's instructions: that it's starting, what it leads with and that lead's facts (opener.py),
+    then its shape."""
+    entry = _sentence(_entry(lead.event, today)) if lead.event is not None else ""
+    summary = _sentence(lead.summary) if lead.summary else ""
+    line = {
+        "first": "- Say plainly, in a few words, that you're an AI. Then ask one question about their search.",
+        "how_did_it_go": f"- Since your last session, they had this: {entry} Open by asking how it went.",
+        "same_day": f"- What you worked on earlier today: {summary} Open by offering to keep going on it.",
+        "coming_up": (
+            f"- Coming up soonest: {entry} Name it, then offer one thing to practice for it, as your question."
+            " If a feedback note below fits it, work it in kindly, in your own words."
+        ),
+        "pick_up": f"- Last session, you worked on this: {summary} Open by offering to pick it back up.",
+        "plain": "- Open with a plain check-in: one question about their search. Don't bring up an interview or a date.",
+    }[lead.kind]
+    return ["- The session is just starting, and you speak first.", line, OPENING_SHAPE, NO_TIME_AWAY]
+
+
+def _signals(convo: Conversation, now_local: datetime, lead: Lead | None) -> str:
+    """The live signals. At the opening, lead is what it leads with, and its instructions follow."""
     lines = [
         f"- Mode: {MODES.get(convo.mode, convo.mode)}.",
         f"- Their local time: {now_local:%A} {_part_of_day(now_local.hour)}, {_clock_time(now_local)}.",
@@ -228,13 +262,8 @@ def _signals(convo: Conversation, now_local: datetime, opening: bool) -> str:
             lines.append("- Your last session was earlier today.")
         else:
             lines.append(f"- It's been {days} day{'s' if days > 1 else ''} since your last session.")
-    if opening:
-        lines.append(
-            "- The session is just starting. Open in under 25 words: a short greeting, then one question about"
-            " their search. If something in their pipeline is coming up soon, name it."
-        )
-        if last is None:
-            lines.append("- Say plainly, in a few words, that you're an AI.")
+    if lead is not None:
+        lines += _opening_lines(lead, now_local.date())
     return "\n".join(lines)
 
 
@@ -251,23 +280,39 @@ def _profile(profile: Profile | None) -> str:
     return "\n".join(lines) or "- Nothing yet."
 
 
+def _entry(entry: PipelineEntry, today: date) -> str:
+    """One pipeline row as the prompt shows it: what, when, then any notes."""
+    what = ", ".join(part for part in (entry.company, entry.role, entry.stage) if part)
+    when = _day(entry.next_date, today) if entry.next_date else "no date yet"
+    if entry.next_time:
+        when += f" at {_clock_time(entry.next_time)}"
+    return f"{what}: {when}" + (f". {entry.notes}" if entry.notes else "")
+
+
 def _pipeline(entries: tuple[PipelineEntry, ...], today: date) -> str:
     if not entries:
         return "- Nothing scheduled."
-    lines = []
-    for entry in entries:
-        what = ", ".join(part for part in (entry.company, entry.role, entry.stage) if part)
-        when = _day(entry.next_date, today) if entry.next_date else "no date yet"
-        if entry.next_time:
-            when += f" at {_clock_time(entry.next_time)}"
-        lines.append(f"- {what}: {when}" + (f". {entry.notes}" if entry.notes else ""))
-    return "\n".join(lines)
+    return "\n".join(f"- {_entry(entry, today)}" for entry in entries)
 
 
 def _memories(hits: list[SearchHit]) -> str:
     if not hits:
         return "- Nothing relevant yet."
     return "\n".join(f"- [{hit.kind}] {hit.text}" for hit in hits)
+
+
+def _feedback_notes(notes: tuple[FeedbackNote, ...], now_local: datetime) -> str:
+    """The opener's feedback, for the memories block: each note with the day of its session."""
+    lines = []
+    for note in notes:
+        day = _day(note.at.astimezone(now_local.tzinfo).date(), now_local.date())
+        lines.append(f"- [feedback, {day}] {note.text}")
+    return "\n".join(lines)
+
+
+def _opening_lead(convo: Conversation, now_utc: datetime, tuning: Tuning) -> Lead:
+    """What the opening leads with, on the conversation's local clock (opener.py)."""
+    return choose_lead(convo.background, now_utc.astimezone(ZoneInfo(convo.tz)), tuning.pipeline_days)
 
 
 def _message(turn: HistoryTurn, *, mark_role: bool) -> dict:
@@ -339,19 +384,25 @@ def build_messages(
     """Wren's context. step_out is why Wren took the floor back from the interviewer this turn, and unsaved
     holds this turn's mock lines, which aren't in convo yet. The mock Wren just stepped out of, or the last
     one while any of its lines are among the recent turns, is shown word for word in its own block, and its
-    lines leave the history, so they appear once."""
+    lines leave the history, so they appear once. With no user_text it's the opening: its lead (opener.py)
+    sets what the signals ask for, and when it's coming_up, the memories block holds the latest feedback."""
     now_local = now_utc.astimezone(ZoneInfo(convo.tz))
+    lead = _opening_lead(convo, now_utc, tuning) if user_text is None else None
     history = _recent(convo, tuning)
     shown = _shown_mock(convo, history, step_out)
     if shown is not None:
         history = [turn for turn in history if turn.mock != shown.id]
+    if lead is not None and lead.kind == "coming_up" and lead.feedback:
+        memories = _feedback_notes(lead.feedback, now_local)
+    else:
+        memories = _memories(hits)
     system = _prompt("conversation.md").format(
         persona=_prompt("persona.md"),
-        signals=_signals(convo, now_local, opening=user_text is None),
+        signals=_signals(convo, now_local, lead),
         profile=_profile(convo.background.profile),
         pipeline_days=tuning.pipeline_days,
         pipeline=_pipeline(convo.background.pipeline, now_local.date()),
-        memories=_memories(hits),
+        memories=memories,
         mock="" if shown is None else _mock_block(convo, shown, step_out, unsaved),
     )
     messages = [{"role": "system", "content": system}]

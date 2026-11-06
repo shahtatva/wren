@@ -7,7 +7,7 @@ from uuid import UUID
 import pytest
 
 from app.conversation import Background, Conversation, Retrieved, reply_runs
-from app.memory.types import PipelineEntry, Profile, SearchHit
+from app.memory.types import FeedbackNote, PipelineEntry, Profile, SearchHit
 from app.mock import CLOSER, Mock, Target
 from app.turn import (
     CRISIS_FALLBACK,
@@ -117,6 +117,60 @@ def test_opening_turn_skips_retrieval_and_asks_for_a_greeting():
     system = chat.messages[0]["content"]
     assert "session is just starting" in system and "you're an AI" in system
     assert chat.messages[-1]["role"] == "user"
+
+
+VELLOWAY = PipelineEntry("Velloway Analytics", "BDR", "recruiter screen", date(2026, 10, 14), time(14, 0), None)
+NOTE = FeedbackNote("Rambles on 'tell me about yourself', running past two minutes", NOW - timedelta(days=2, hours=1))
+SUMMARY = "The user practiced the consulting club story and worked on ending it on the result."
+
+
+def opening_prompt(now=NOW, **background) -> str:
+    convo = conversation(turns=0)
+    convo.background = replace(convo.background, **background)
+    return build_messages(convo, None, [], now, Tuning())[0]["content"]
+
+
+def test_the_opening_prompt_holds_the_shape_and_says_nothing_about_time_away():
+    content = opening_prompt()
+    assert "session is just starting" in content and "under twenty words in total" in content
+    assert "Don't mention how long" in content and "Open in under 25 words" not in content
+
+
+@pytest.mark.parametrize("background, present, absent", [
+    ({"recent": (VELLOWAY,)},
+     ["they had this: Velloway Analytics, BDR, recruiter screen: Wednesday, October 14 (yesterday) at 2:00 PM", "how it went"],
+     ["Coming up soonest"]),
+    ({"last_session_at": datetime(2026, 10, 15, 21, 10, tzinfo=timezone.utc), "last_summary": SUMMARY},
+     [SUMMARY, "keep going on it"], ["Coming up soonest"]),
+    ({"feedback": (NOTE,)},
+     ["Coming up soonest: Sprout Social, BDR, recruiter screen: Friday, October 16 (tomorrow) at 11:00 AM",
+      "- [feedback, Tuesday, October 13] Rambles on 'tell me about yourself', running past two minutes"],
+     ["Nothing relevant yet."]),
+    ({"pipeline": (), "last_summary": SUMMARY, "feedback": (NOTE,)},
+     [SUMMARY, "pick it back up", "Nothing relevant yet."], ["Rambles on"]),
+    ({"pipeline": ()}, ["Don't bring up an interview or a date"], ["Coming up soonest"]),
+])
+def test_each_lead_puts_its_own_facts_in_the_opening_prompt(background, present, absent):
+    content = opening_prompt(**background)
+    for text in present:
+        assert text in content, text
+    for text in absent:
+        assert text not in content, text
+
+
+def test_later_turns_never_see_the_opener_facts():
+    convo = conversation()
+    convo.background = replace(convo.background, recent=(VELLOWAY,), feedback=(NOTE,), last_summary=SUMMARY)
+    content = build_messages(convo, "hi", [], NOW, Tuning())[0]["content"]
+    for text in ("Velloway", "Rambles on", SUMMARY, "under twenty words", "session is just starting"):
+        assert text not in content, text
+
+
+def test_the_opening_reads_the_clock_in_their_zone():
+    take_home = PipelineEntry("Quillbase", None, "take-home", date(2026, 10, 15), None, None)
+    late = datetime(2026, 10, 16, 2, 0, tzinfo=timezone.utc)  # 10 pm Thursday in New York, already Friday in UTC
+    content = opening_prompt(now=late, pipeline=(take_home,), recent=(take_home,))
+    assert "Coming up soonest: Quillbase, take-home: Thursday, October 15 (today)" in content
 
 
 def test_run_turn_yields_clean_segments_and_records_timing():
