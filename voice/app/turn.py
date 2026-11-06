@@ -56,6 +56,7 @@ from app.mock import (
     CLOSER, CLOSER_LEAD, STEP_BACK_IN, STEP_IN, STEP_OUT, Cue, CueFilter, Mock, interviewer_name, interviewer_title,
     plain_company, resolve_target, same_company, step_out_reason,
 )
+from app.opener import FIRST_OPENING_LINE, OPENING_LINE
 from app.voice import clock
 from app.voice.metrics import TurnTiming
 from app.voice.segment import Segmenter
@@ -73,9 +74,6 @@ MODES = {"checkin": "a check-in", "mock": "mock interview practice"}
 RETRY_LINE = "I lost my train of thought. Could you say that again?"
 # When Wren's reply after stepping out for a crisis fails twice, asking them to repeat it won't do: real help comes first.
 CRISIS_FALLBACK = "If you're in danger right now, call nine one one. You can call or text nine eight eight any time."
-# When the opening fails twice there's nothing to say again, so Wren just greets.
-OPENING_LINE = "Hey, good to have you back. How's the search going?"
-FIRST_OPENING_LINE = "Hi, I'm Wren, an AI here to help with your job search. How's it going so far?"
 # When the interviewer's first question fails twice, there's no answer to ask for again, so it starts simple.
 FIRST_QUESTION_LINE = "Let's start simple. Walk me through your background."
 
