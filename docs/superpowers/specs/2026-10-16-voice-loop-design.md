@@ -173,6 +173,47 @@ Kept: the step-out budget, HOLD's "Don't ask the interviewer's questions yoursel
 
 Live, by voice: still to come. The user runs one full Sprout mock and one that asks "are you real?" midway and then picks back up. `python -m app.tools.ttfa_report` then gives the mock and check-in p50 and p95, and the gap between "It's me again." and the debrief's first word.
 
+## Build notes: the deploy (2026-11-06)
+
+Built on the branch `deploy`. Implementation plan: [plans/2026-10-25-deploy.md](../plans/2026-10-25-deploy.md). Wren runs on the owner's phone: `voice/` on Render, `web/` on Vercel. Both run commit 4b61437, from before the mock interviews were merged.
+
+**Where it runs.**
+
+| Piece | Where | Settings |
+| --- | --- | --- |
+| `voice/` | Render's free web service, https://wren-voice.onrender.com | Docker, root directory `voice`, region Virginia (next to the Supabase pooler in us-east-1), health check `/health`. It deploys every push to `master`. Its environment is everything in `voice/.env.example` except `WREN_DEV_USER_ID` (the image clears it anyway) and `PORT` (Render sets it). `ALLOWED_ORIGINS` is exactly `https://wren-kappa.vercel.app,https://wren-tatva-dev.vercel.app` |
+| `web/` | Vercel project `tatva-dev/wren`, https://wren-kappa.vercel.app | Deployed from `web/` with `npx vercel@64.5.0 deploy --prod`. The project has no Git connection, so a push doesn't deploy it. Its only variable is `NEXT_PUBLIC_VOICE_SERVER_URL`, with no trailing slash, because the client adds `/ws` and `/auth` to it as is. `wren-tatva-dev.vercel.app` sits behind Vercel's login, so the phone uses `wren-kappa` |
+| Database and sign-in | The one Supabase project | A free project pauses after about a week with no use. Sign-in then fails with "I can't reach sign-in right now" until the owner restores it in the dashboard. That happened once, before the first phone check |
+
+**What changed for the deploy:**
+
+- Every send to Deepgram has a 2 s deadline (see "Fallbacks and limits"). A stalled send used to freeze the session's socket reader or its timers.
+- The API docs pages are off.
+- The image's start command sets `WREN_DEV_USER_ID` to empty instead of unsetting it. `load_dotenv` fills a variable that's unset from a `.env`, so an image that ever held one would bring the dev identity back.
+- The web app sends security headers on every route, from `securityHeaders` in `web/next.config.ts`:
+  - The content security policy lets the page connect only to itself and the voice server's `https` and `wss` origins.
+  - Scripts run inline without nonces, which Cache Components rule out. Eval is allowed in dev only.
+  - The page can't be framed, and only this site may use the mic.
+- The production build runs on Vercel, not locally: on Windows, `vercel build` stops when it can't create a symlink (EPERM). Keys can't reach that build, because `web/.vercelignore` keeps local env files out of the upload and the project holds no key.
+
+**Measured:**
+
+| Measurement | Result |
+| --- | --- |
+| TTFA on the owner's phone, memory on | 2,919 ms, one reading from the debug panel. Local runs with memory on took 2 to 3 s, with retrieval at 0.73 to 1.04 s of it. Both are above goal 2's 1.0 s |
+| Cold start, after an hour idle | About 23 s. A browser page load gets Render's own "waking up" page at once (HTTP 503). The app's requests, the sign-in and the socket, are held until the server is up, then answered normally, so a first sign-in on a sleeping server only takes 23 s longer |
+| Key-leak check | Pass on the production build (512 files) and on everything a browser downloads from production (17 responses) |
+| Security policy | No violations in the production console. A wrong password reaches the voice server and gets "That email and password don't match" |
+
+**Logs.** Render's dashboard keeps the server's output, which includes each turn's timings. `voice/logs/turns.jsonl` is written inside the container, and Render's disk is ephemeral, so the file starts over after every deploy or restart. The database keeps the transcripts. `?debug=1` shows each turn's TTFA on the page.
+
+**Render loses any close the server starts.** Through Render, these closes never reach the page: 4400 after a missing hello, and 4401 after a refused one. The session cap's 4410 is sent the same way. Instead Render cuts the connection about 20 s later, so the page sees 1006.
+
+- A close that the page starts gets through, code and all: 1000 and 4000 came back in 0.4 s.
+- The same image without Render delivers 4401 at once, and 4400 at its 5 s hello timeout.
+- The page decides from 4401 and 4410 not to reconnect, so in production a refusal or the cap looks like a dropped connection, and the page reconnects.
+- The server sends `error {code}` before each of these closes, so the page can decide from that message instead. Not fixed yet.
+
 ## Why
 
 Wren is voice-first, and the spec's second goal is that it feels live: time to first audio (TTFA) p50 ≤ 1.0 s and p95 ≤ 1.5 s, logged every turn. The user must be able to cut in at any moment, as in a real mock interview. The pipeline is a cascade on purpose, so `/turn` can rebuild the context every turn. Every provider call happens in `voice/`, so the browser never holds an API key.
@@ -343,7 +384,7 @@ Arrows: `→` is browser to `voice/`, and `←` is `voice/` to browser.
 | → | `playback {turn, seg, event}` | `start` and `end` of each segment, as actually heard |
 | → | `barge_in {turn, seg, played_ms, onset_ms}` | The local VAD heard the user and paused playback |
 | ← | `interrupt {turn}` / `resume {turn}` | The barge-in was confirmed / was a false alarm |
-| ← | `voice {available, reason}` | Speech-to-text dropped (`stt_closed`), was closed after 2 idle minutes (`idle`), or came back. The UI switches to text and back |
+| ← | `voice {available, reason}` | Speech-to-text couldn't connect at the start (`stt_unavailable`), dropped (`stt_closed`), stalled on a send and was dropped (`stt_stalled`), was closed after 2 idle minutes (`idle`), or came back. The UI switches to text and back |
 | ← | `metrics {turn, ttfa_ms, ..., speech_end_at, first_token_at, first_audio_at}` | The turn's timings: once with the first audio byte, and again with its outcome. Feeds the debug panel |
 | → | `end {}` | The user ends the session |
 | ← | `error {code, message}` | `message` is user-facing copy |
@@ -460,6 +501,7 @@ Whole replies cost about 210 ms at p50 and 310 ms at p95, almost all of it the m
   - Each chat model: 4 s to send its first token, then the next model is tried.
   - Gemini calls: 60 s at most. The SDK's default is to wait forever.
   - Live database queries: 3 s. Connecting: 5 s, with TCP keepalives so an idle connection survives.
+  - Each send to Deepgram (audio, KeepAlive or Finalize): 2 s (`stt_send_timeout_s`). A send that takes longer has stalled, and it would freeze the socket reader or the ticker that awaits it. The server drops speech-to-text as if the connection broke, sends `voice {available: false, reason: "stt_stalled"}`, and retries as usual.
 - **Credit guard:**
   - After 2 minutes with no speech, close the Nova-3 connection and show a paused state.
   - Cap sessions at 45 minutes. The server sends `error {code: "session_over"}` and closes with 4410, and the page doesn't reconnect.
@@ -469,7 +511,9 @@ Whole replies cost about 210 ms at p50 and 310 ms at p95, almost all of it the m
 
 - **Provider keys** are read from `voice/.env` and sent only from the server: in `Authorization` headers to Deepgram, Groq and Gemini, and in the `apikey` header to Supabase Auth (a secret key isn't a JWT). No protocol message carries one.
 - **Origin check.** The socket, `POST /turn` and the `/auth` routes check `Origin` against `ALLOWED_ORIGINS`. That blocks other sites, but it isn't authentication.
-- **Local dev identity.** `WREN_DEV_USER_ID`, user zero's row in `auth.users`, is accepted without a token, but only from loopback client addresses (`127.0.0.1` or `::1`). It applies to the socket and to `POST /turn` alike, and it skips the age check, because it only exists on the owner's machine. A proxy on the same host would also look like loopback, so a deploy must leave this setting unset. An empty `WREN_DEV_USER_ID=` in the environment turns it off even when `voice/.env` sets it.
+- **Local dev identity.** `WREN_DEV_USER_ID`, user zero's row in `auth.users`, is accepted without a token, but only from loopback client addresses (`127.0.0.1` or `::1`). It applies to the socket and to `POST /turn` alike, and it skips the age check, because it only exists on the owner's machine. A proxy on the same host would also look like loopback, so a deploy must leave this setting unset. An empty `WREN_DEV_USER_ID=` in the environment turns it off even when `voice/.env` sets it, and the image's start command sets it that way.
+- **API docs.** `/docs`, `/redoc` and `/openapi.json` are off, so the server publishes no map of its routes.
+- **The page's own limits.** The web app's content security policy lets the page connect only to itself and the voice server, which narrows where an injected script could send a token (see "Build notes: the deploy").
 - **Sign-in** (built 2026-10-24, [plans/2026-10-19-sign-in.md](../plans/2026-10-19-sign-in.md)). It's routed through `voice/`, because the browser never talks to Supabase.
   - **Email and password, not emailed codes.** Since 2026-06-03, new Free Supabase projects can't edit their email templates on the built-in sender, and the default Magic Link email carries a link, not a code. So nothing sends email. The owner creates each account in the dashboard, with "Allow new users to sign up" off, and gives it a password with `python -m app.tools.set_password EMAIL`.
   - **Routes on `voice/`:** `POST /auth/signin`, `/auth/refresh`, `/auth/age` and `/auth/signout`. A refusal is `{code, message}`, and a wrong email gets the same one as a wrong password.
@@ -562,8 +606,8 @@ The total is about 21.5 h, roughly a sprint and a half at 15 h a week. M5 and M6
 | TTFA p50 over 1.0 s from end of speech | Misses goal 2 | The per-stage log on every turn, and the levers in the budget table |
 | Premature end of turn in mocks | Wren cuts the user off | A longer hold in mocks. Speech while thinking cancels and merges. A later Flux trial |
 | An open mic spends the credit | The credit runs out | Idle close, session cap, KeepAlive while muted |
-| A free host adds latency or cold starts | Slower once deployed | Measure locally first. The hosting decision is a separate plan |
-| iOS audio quirks | Phone sessions break | Desktop Chrome first. The phone comes with the deploy plan |
+| A free host adds latency or cold starts | Slower once deployed | Measured on Render: TTFA in line with local runs, and a cold start costs about 23 s (build notes: the deploy) |
+| iOS audio quirks | Phone sessions break | Desktop Chrome first. The owner's phone check passed on 2026-11-06 |
 
 ## Later, on top of this loop
 
