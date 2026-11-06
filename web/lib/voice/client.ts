@@ -20,6 +20,11 @@ export { VOICE_SERVER_URL };
 /** Refusals the page acts on: sign in again, or confirm 18+. */
 export type RefusalCode = "unauthorized" | "age_unconfirmed";
 const REFUSAL_CODES: readonly string[] = ["unauthorized", "age_unconfirmed"];
+// Errors the server closes the socket after. A close the server starts can be lost on the way
+// (Render's proxy drops it and cuts the connection about 20 s later), so the page acts on the
+// message instead of waiting for the close code.
+const ENDS_SESSION: readonly string[] = [...REFUSAL_CODES, "session_over"]; // then 4401 or 4410
+const RETRIES: readonly string[] = ["age_check_failed", "unavailable"]; // then 4503
 
 export type VoiceStatus = "idle" | "connecting" | "listening" | "thinking" | "speaking" | "paused" | "reconnecting";
 
@@ -228,17 +233,32 @@ export class VoiceClient {
       this.player?.flush();
       if (this.stopped) return;
       if (!reconnects(event.code)) {
-        // The server already said why, and that notice stays on screen. Let go of the mic and
-        // Wren's voice, and tell the page, so its next tap or message starts a new session.
-        const refusal = this.refusal;
-        this.stop();
-        if (refusal) this.emit({ type: "refused", code: refusal });
-        this.emit({ type: "ended" });
+        this.end();
         return;
       }
       // After 4503 the server's own message is on screen already: it says why and that it will retry.
       this.retryLater(event.code === CLOSE_CODES.unavailable ? null : this.sessionId ? NOTICES.lost : NOTICES.unreachable);
     };
+  }
+
+  /** The server's final word. Its notice stays on screen. Let go of the mic and Wren's voice, and
+   * tell the page, so its next tap or message starts a new session. */
+  private end(): void {
+    const refusal = this.refusal;
+    this.stop();
+    if (refusal) this.emit({ type: "refused", code: refusal });
+    this.emit({ type: "ended" });
+  }
+
+  /** A refusal that will pass: let go of this socket now and try again with backoff. */
+  private dropAndRetry(): void {
+    const ws = this.ws;
+    if (!ws) return;
+    this.ws = null;
+    ws.onclose = null;
+    ws.close();
+    this.player?.flush();
+    this.retryLater(null); // the server's message says why, and that it will keep trying
   }
 
   private retryLater(notice: string | null): void {
@@ -322,6 +342,8 @@ export class VoiceClient {
       case "error":
         this.notice(m.message);
         if (REFUSAL_CODES.includes(m.code)) this.refusal = m.code as RefusalCode;
+        if (ENDS_SESSION.includes(m.code)) this.end();
+        else if (RETRIES.includes(m.code)) this.dropAndRetry();
         break;
     }
   }

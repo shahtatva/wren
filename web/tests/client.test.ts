@@ -247,6 +247,53 @@ test("a 4401 age refusal tells the page to show the age step", async () => {
   assert.ok(events.some((event) => event.type === "ended"));
 });
 
+// Render's proxy loses any close the server starts and cuts the connection about 20 s later,
+// so the page has to act on the server's last message, not on its close code.
+
+test("a refusal ends the session even when its close code never arrives", async () => {
+  fakeTimers(["setTimeout"]);
+  const { socket, mic, events } = await startedClient();
+  socket.receive({ type: "error", code: "unauthorized", message: "You're signed out. Sign in to keep going." });
+  assert.ok(events.some((event) => event.type === "refused" && event.code === "unauthorized"), "the page goes to sign-in");
+  assert.ok(events.some((event) => event.type === "ended"));
+  assert.ok(mic.stopped, "the mic is off behind the sign-in screen");
+  assert.equal(socket.readyState, 3, "the page closes the socket itself");
+  socket.drop(1006);
+  mock.timers.tick(30_000);
+  assert.equal(FakeSocket.made.length, 1, "and never reconnects");
+});
+
+test("the session cap ends the session even when its close arrives as a dropped connection", async () => {
+  fakeTimers(["setTimeout"]);
+  const { socket, events } = await startedClient();
+  socket.receive({ type: "error", code: "session_over", message: "That's our time for this session." });
+  socket.drop(1006);
+  mock.timers.tick(30_000);
+  assert.ok(events.some((event) => event.type === "ended"));
+  assert.equal(FakeSocket.made.length, 1, "a capped session isn't restarted behind the user's back");
+});
+
+test("a refusal that will pass retries without waiting for its close", async () => {
+  fakeTimers(["setTimeout"]);
+  const { socket, events } = await startedClient();
+  const message = "I can't check your account right now. I'll keep trying.";
+  socket.receive({ type: "error", code: "age_check_failed", message });
+  assert.equal(socket.readyState, 3, "the page lets go of the socket at once");
+  mock.timers.tick(1000);
+  assert.equal(FakeSocket.made.length, 2, "it reconnects on the usual first backoff, not 20 s later");
+  assert.deepEqual(events.filter((event) => event.type === "notice").at(-1), { type: "notice", text: message });
+  assert.ok(!events.some((event) => event.type === "ended" || event.type === "refused"));
+});
+
+test("a failed reply keeps the session going", async () => {
+  fakeTimers(["setTimeout"]);
+  const { socket, events } = await startedClient();
+  socket.receive({ type: "error", code: "reply_failed", message: "I lost my train of thought. Could you say that again?" });
+  mock.timers.tick(30_000);
+  assert.equal(socket.readyState, FakeSocket.OPEN, "the server doesn't close after this one");
+  assert.ok(!events.some((event) => event.type === "ended" || event.type === "refused"));
+});
+
 test("a POST /turn refusal shows the server's message", async () => {
   fakeTimers(["setTimeout"]); // the dropped socket's reconnect never fires
   const message = "I'm built for adults. Confirm you're 18 or older to keep going.";
