@@ -175,7 +175,7 @@ Live, by voice: still to come. The user runs one full Sprout mock and one that a
 
 ## Build notes: the deploy (2026-11-06)
 
-Built on the branch `deploy`. Implementation plan: [plans/2026-10-25-deploy.md](../plans/2026-10-25-deploy.md). Wren runs on the owner's phone: `voice/` on Render, `web/` on Vercel. Both run commit 4b61437, from before the mock interviews were merged.
+Built on the branch `deploy`. Implementation plan: [plans/2026-10-25-deploy.md](../plans/2026-10-25-deploy.md). Wren runs on the owner's phone: `voice/` on Render, `web/` on Vercel. The first deploy was commit 4b61437, from before the mock interviews were merged, and the phone check and measurements below are from it. Later the same day, `master` went out with the mock interviews and the close fix below, and both pieces were redeployed from it.
 
 **Where it runs.**
 
@@ -211,8 +211,8 @@ Built on the branch `deploy`. Implementation plan: [plans/2026-10-25-deploy.md](
 
 - A close that the page starts gets through, code and all: 1000 and 4000 came back in 0.4 s.
 - The same image without Render delivers 4401 at once, and 4400 at its 5 s hello timeout.
-- The page decides from 4401 and 4410 not to reconnect, so in production a refusal or the cap looks like a dropped connection, and the page reconnects.
-- The server sends `error {code}` before each of these closes, so the page can decide from that message instead. Not fixed yet.
+- The page decided from 4401 and 4410 not to reconnect, so in production a refusal or the cap looked like a dropped connection, and the page reconnected.
+- The server sends `error {code}` before each of these closes, so the page now decides from that message instead. A refusal or the cap ends the session at once, and a refusal that will pass (`age_check_failed`, `unavailable`) retries at once. The close codes still work as a fallback.
 
 ## Why
 
