@@ -5,7 +5,7 @@ fallbacks). Fixed notes stand in for retrieval, and there is no database and no 
 Each reply prints with its word count and the flags check() raises for what reads badly
 aloud, then the run is summarized. Run it after any change to a prompt that makes Wren
 speak (wren-voice skill, "Writing prompts"), and read the replies: the flags are a net, not
-a verdict. --group picks checkin, mock or all. --scenario picks one by name, and can be repeated.
+a verdict. --group picks checkin, opener, mock or all. --scenario picks one by name, and can be repeated.
 
 - The scene is fixed. The clock is SAMPLE_NOW, so every run sees the same evening, the same
   pipeline and the same gap since the last session.
@@ -33,12 +33,12 @@ from datetime import date, datetime, time, timedelta, timezone
 from uuid import UUID
 
 from app.conversation import Background, Conversation, Retrieved, reply_runs
-from app.memory.types import PipelineEntry, Profile, SearchHit
+from app.memory.types import FeedbackNote, PipelineEntry, Profile, SearchHit
 from app.mock import (
     STEP_BACK_IN, STEP_IN, STEP_OUT, CueFilter, Mock, interviewer_name, interviewer_title, resolve_target,
 )
 from app.tools.ttfa_report import percentile
-from app.turn import Chat, Spoken, run_turn
+from app.turn import OPENING_SENTENCES, OPENING_WORDS, Chat, Spoken, run_turn
 from app.voice.metrics import TurnTiming
 from app.voice.tuning import Tuning
 
@@ -72,18 +72,24 @@ _PRAISE = re.compile(
 )
 
 
-def check(reply: str, *, debrief: bool = False, in_role: bool = False) -> list[str]:
+def check(reply: str, *, debrief: bool = False, in_role: bool = False, opening: bool = False) -> list[str]:
     """What would read badly aloud, from the persona card and the wren-voice checklist. [] is clean.
 
     A reply runs long past three sentences or forty-five words (fifteen a sentence). A
-    debrief gets six sentences and ninety words. Praise is a problem only in role: the
-    interviewer saves feedback for the debrief. In role, great, solid, nice, strong and
-    impressive count anywhere, so "a strong fit" is flagged too: read the reply.
+    debrief gets six sentences and ninety words. An opening runs long past two sentences or
+    at twenty words, the user's limit. Praise is a problem only in role: the interviewer
+    saves feedback for the debrief. In role, great, solid, nice, strong and impressive count
+    anywhere, so "a strong fit" is flagged too: read the reply.
     """
     sentences = [s for s in _SENTENCE_BREAK.split(reply.strip()) if s]
-    max_sentences = 6 if debrief else 3
+    words = len(reply.split())
+    if opening:
+        long = len(sentences) > OPENING_SENTENCES or words >= OPENING_WORDS
+    else:
+        max_sentences = 6 if debrief else 3
+        long = len(sentences) > max_sentences or words > max_sentences * WORDS_PER_SENTENCE
     flags = []
-    if len(sentences) > max_sentences or len(reply.split()) > max_sentences * WORDS_PER_SENTENCE:
+    if long:
         flags.append("long")
     if reply.count("?") > 1:
         flags.append("two questions")
@@ -124,6 +130,7 @@ class SampleReply:
     parts: tuple[tuple[str, str], ...] = ()  # (who, words) for each speaker in turn: Wren, or the interviewer's name
     cues: tuple[str, ...] = ()  # the cues the calls wrote, never spoken: [mock: company], [mock] or [step out]
     finish: str | None = None  # why the turn's last call ended: "length" means it hit the token cap
+    held_ms: int | None = None  # an opening's wait from its first whole sentence to being spoken
 
 
 def _noted(chat: Chat, calls: list[tuple[str | None, str]]) -> Chat:
@@ -170,14 +177,16 @@ def _sample(
     own = ((spoken, spoken.mock) for spoken in said if spoken.mock is not None or spoken not in SWITCH_LINES)
     flags: list[str] = []
     for words, who in reply_runs(own):
-        found = check(words, debrief=debrief and who is None, in_role=who is not None)
+        found = check(
+            words, debrief=debrief and who is None, in_role=who is not None, opening=line is None and who is None,
+        )
         flags += [flag for flag in found if flag not in flags]
     text = " ".join(said)
     model = " + ".join(dict.fromkeys(used or "no model" for used, _ in calls)) or None
     cues = tuple(cue for _, wrote in calls if (cue := _cue(wrote)))
     return SampleReply(
         scenario, line, text, len(text.split()), flags, model, timing.reply_repair, timing.switch, parts, cues,
-        timing.finish_reason,
+        timing.finish_reason, timing.held_ms,
     )
 
 
@@ -216,6 +225,7 @@ async def run_scenario(scenario: Scenario, chat: Chat, tuning: Tuning, *, pause_
 
 def summarize(replies: list[SampleReply]) -> dict:
     words = [r.words for r in replies]
+    held = [r.held_ms for r in replies if r.held_ms is not None]
     return {
         "replies": len(replies),
         "median_words": percentile(words, 50),
@@ -225,6 +235,8 @@ def summarize(replies: list[SampleReply]) -> dict:
         "gave_up": sum(r.repair == "gave_up" for r in replies),
         "hit_cap": sum(r.finish == "length" for r in replies),
         "switches": dict(Counter(r.switch for r in replies if r.switch)),
+        "held_p50": percentile(held, 50),  # openings only: how long they were held until whole
+        "held_max": max(held, default=None),
     }
 
 
@@ -348,8 +360,29 @@ def paused(why: str, said: str, answer: str) -> Callable[[], Conversation]:
     return setup
 
 
+# The opener group: Maya opening the app on Thursday evening, one scene per lead (opener.py). The feedback
+# is the eval set's (maya-f06 to f08 in evals/data/personas/maya.json). Velloway's screen was this afternoon.
+OPENER_FEEDBACK = (
+    FeedbackNote("Rambles on 'tell me about yourself', running past two minutes", SAMPLE_NOW - timedelta(days=2)),
+    FeedbackNote("Her openers land when she leads with a number", SAMPLE_NOW - timedelta(days=9)),
+    FeedbackNote("Forgets to ask the interviewer questions at the end", SAMPLE_NOW - timedelta(days=16)),
+)
+VELLOWAY = PipelineEntry("Velloway Analytics", "BDR", "recruiter screen", date(2026, 10, 15), time(14, 0), None)
+LAST_SUMMARY = "The user practiced the consulting club story and worked on ending it on the result."
+
+
+def opener_scene(**changes) -> Callable[[], Conversation]:
+    """Maya's scene, with these changes to what her session loaded."""
+
+    def setup() -> Conversation:
+        convo = maya()
+        convo.background = replace(convo.background, **changes)
+        return convo
+
+    return setup
+
+
 SCENARIOS = (
-    Scenario("opening", "checkin", maya, (None,), HITS),
     Scenario("nervous", "checkin", maya, ("I have the Sprout screen tomorrow and honestly I'm kind of nervous.",), HITS),
     # The answer and the question about it come as one message, so Wren can't credit a retry that never happened.
     Scenario("ramble", "checkin", maya, (f"{RAMBLE} How was that?",), HITS),
@@ -357,6 +390,15 @@ SCENARIOS = (
     Scenario("memory", "checkin", maya, ("Do you remember what I told you about my old manager?",)),
     Scenario("person", "checkin", maya, ("Wait, are you an actual person?",), HITS),
     Scenario("crisis", "checkin", maya, (CRISIS,), HITS),
+    # One opening per lead. An opening skips retrieval, so these take no notes.
+    Scenario("first", "opener", opener_scene(last_session_at=None, pipeline=()), (None,)),
+    Scenario("how-did-it-go", "opener", opener_scene(recent=(VELLOWAY,), feedback=OPENER_FEEDBACK), (None,)),
+    Scenario("same-day", "opener", opener_scene(
+        last_session_at=SAMPLE_NOW - timedelta(hours=2, minutes=30), last_summary=LAST_SUMMARY, feedback=OPENER_FEEDBACK,
+    ), (None,)),
+    Scenario("coming-up", "opener", opener_scene(feedback=OPENER_FEEDBACK), (None,)),
+    Scenario("pick-up", "opener", opener_scene(pipeline=(), last_summary=LAST_SUMMARY, feedback=OPENER_FEEDBACK), (None,)),
+    Scenario("plain", "opener", opener_scene(pipeline=()), (None,)),
     # Wren should cue a mock for a request and for a yes to its offer, and not for news about the screen.
     Scenario("start", "mock", maya, (SPROUT,), HITS),
     Scenario("yes-to-offer", "mock", offered, ("Yeah, let's do it.",), HITS),
@@ -388,6 +430,8 @@ def show(reply: SampleReply) -> None:
         notes.append(f"repair: {reply.repair}")
     if reply.finish == "length":
         notes.append("hit the token cap")
+    if reply.held_ms is not None:
+        notes.append(f"held {reply.held_ms} ms")
     notes += [f"cue {cue}" for cue in reply.cues]
     if reply.switch:
         notes.append(f"switch: {reply.switch}")
@@ -441,6 +485,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     print("Switches: " + (", ".join(f"{switch} x{n}" for switch, n in summary["switches"].items()) or "none"))
     print("Models: " + ", ".join(f"{model} x{n}" for model, n in Counter(r.model for r in replies).most_common()))
+    if summary["held_p50"] is not None:
+        print(f"Openers held: median {summary['held_p50']} ms, max {summary['held_max']} ms.")
     return 0
 
 

@@ -2,13 +2,18 @@ import asyncio
 import json
 import sys
 import types
+from dataclasses import replace
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from app.conversation import Conversation
 from app.mock import interviewer_name, step_out_reason
+from app.opener import choose_lead
 from app.tools.bench import frames_of, room_noise
-from app.tools.samples import RAMBLE, SCENARIOS, SampleReply, Scenario, check, maya, run_scenario
+from app.tools.samples import (
+    RAMBLE, SAMPLE_NOW, SCENARIOS, TZ, SampleReply, Scenario, check, maya, run_scenario,
+)
 from app.tools.samples import summarize as summarize_replies
 from app.tools.ttfa_report import load_records, percentile, summarize
 from app.turn import INTERVIEW_START
@@ -244,7 +249,7 @@ def test_a_turn_names_every_model_its_calls_used():
 
 def test_the_checkin_scenarios_set_one_scene_and_the_ramble_comes_with_its_question():
     by_name = {s.name: s for s in SCENARIOS if s.group == "checkin"}
-    assert list(by_name) == ["opening", "nervous", "ramble", "memory", "person", "crisis"]
+    assert list(by_name) == ["nervous", "ramble", "memory", "person", "crisis"]
     assert 100 <= len(RAMBLE.split()) <= 140  # about 120 words
     chat = FakeChat([["Okay."]])
     asyncio.run(run_scenario(by_name["ramble"], chat, Tuning()))
@@ -328,15 +333,39 @@ def test_the_command_line_plays_the_chosen_scenarios_with_its_pause(monkeypatch,
         samples.main(["--group", "y", "--scenario", "two"])  # the filters leave nothing to play
 
 
-def test_the_memory_scenario_has_no_notes_and_the_opening_has_no_user_line():
+def test_the_memory_scenario_has_no_notes():
     by_name = {s.name: s for s in SCENARIOS if s.group == "checkin"}
     chat = FakeChat([["I don't have that."]])
     memory = asyncio.run(run_scenario(by_name["memory"], chat, Tuning()))
     assert memory[0].line == "Do you remember what I told you about my old manager?"
     assert "Nothing relevant yet." in chat.calls[0][0]["content"]
-    chat = FakeChat([["Hey Maya. Sprout's tomorrow. How are you feeling?"]])
-    opening = asyncio.run(run_scenario(by_name["opening"], chat, Tuning()))
-    assert opening[0].line is None and "session is just starting" in chat.calls[0][0]["content"]
+
+
+def test_check_flags_an_opener_past_two_sentences_or_at_twenty_words():
+    assert check("Maya, your Sprout screen is tomorrow. Want to run it once?", opening=True) == []
+    assert "long" in check("Hey Maya. Your Sprout screen is tomorrow. Want to run it once?", opening=True)
+    twenty = "Maya, your Sprout screen is tomorrow, and last week you ran long on your intro. Want to tighten it tonight?"
+    assert "long" in check(twenty, opening=True) and "long" not in check(twenty)
+
+
+def test_summarize_reports_how_long_openers_were_held():
+    replies = [replace(SampleReply("s", None, "Hi.", 1, []), held_ms=ms) for ms in (10, 30, None)]
+    summary = summarize_replies(replies)
+    assert summary["held_p50"] == 10 and summary["held_max"] == 30
+
+
+def test_the_opener_scenes_reach_each_lead():
+    by_name = {s.name: s for s in SCENARIOS if s.group == "opener"}
+    leads = {"first": "first", "how-did-it-go": "how_did_it_go", "same-day": "same_day",
+             "coming-up": "coming_up", "pick-up": "pick_up", "plain": "plain"}
+    assert list(by_name) == list(leads)
+    now_local = SAMPLE_NOW.astimezone(ZoneInfo(TZ))
+    for name, kind in leads.items():
+        assert by_name[name].lines == (None,), name
+        assert choose_lead(by_name[name].setup().background, now_local, Tuning().pipeline_days).kind == kind, name
+    chat = FakeChat([["Maya, your Sprout screen is tomorrow. Want to run it once?"]])
+    [reply] = asyncio.run(run_scenario(by_name["coming-up"], chat, Tuning()))
+    assert reply.flags == [] and reply.held_ms is not None and "- [feedback, " in chat.calls[0][0]["content"]
 
 
 def test_a_pause_waits_between_turns_but_not_before_the_first(monkeypatch):
