@@ -31,7 +31,7 @@ from tests.voice_fakes import (
     voice_session,
 )
 
-OPENING = ["Hey Maya. ", "How's the week going?"]
+OPENING = ["Hi, I'm Wren, an AI. ", "How's the week going?"]  # a first session: it says Wren is an AI
 
 
 def final(text, start, end, speech_final=True):
@@ -173,7 +173,7 @@ def test_opening_then_voice_turn_streams_segments_audio_and_metrics():
     with voice_session(make_runtime(chat, stt=stt, tts=tts)) as (ws, wire, ready):
         assert ready["voice"] is True and ready["memory"] == "off: test" and ready["resumed"] is False
         opening = play(ws, wire, turn=1)
-        assert [m["text"] for m in opening] == ["Hey Maya.", "How's the week going?"]
+        assert [m["text"] for m in opening] == ["Hi, I'm Wren, an AI.", "How's the week going?"]
         assert {(t, s) for t, s, _ in wire.audio} == {(1, 0), (1, 1)}
 
         send_silence(ws, stt, 1.0)
@@ -182,7 +182,7 @@ def test_opening_then_voice_turn_streams_segments_audio_and_metrics():
         assert user == {"type": "user_turn", "turn": 2, "text": "Sprout moved to Friday."}
         reply = play(ws, wire, turn=2)
         assert [m["text"] for m in reply] == ["Friday works.", "Want to prep tonight?"]
-        said = ["Hey Maya.", "How's the week going?", "Friday works.", "Want to prep tonight?"]
+        said = ["Hi, I'm Wren, an AI.", "How's the week going?", "Friday works.", "Want to prep tonight?"]
         assert tts.spoken == [(text, False) for text in said]  # no mock: every line is in Wren's own voice
         assert chat.calls[1][-1] == {"role": "user", "content": "Sprout moved to Friday."}
 
@@ -564,7 +564,7 @@ def test_a_crisis_over_wren_interrupts_without_a_page_pause():
 
 
 def test_a_reply_finishes_even_if_the_browser_never_reports_playback():
-    with voice_session(make_runtime(FakeChat([["Hey there."]]), stt=FakeStt())) as (ws, wire, _):
+    with voice_session(make_runtime(FakeChat([["I'm Wren, an AI."]]), stt=FakeStt())) as (ws, wire, _):
         wire.until("reply_end", turn=1)  # all audio sent; the page never says it played
         metrics, _ = wire.until("metrics", turn=1, outcome="complete", timeout=3)
         assert metrics["ttfa_ms"] is None
@@ -676,11 +676,11 @@ def test_a_stalled_keepalive_doesnt_freeze_the_ticker():
 
 
 def test_tts_failure_still_delivers_the_text():
-    chat = FakeChat([["Hey there."]])
+    chat = FakeChat([["I'm Wren, an AI."]])  # a first session's opening says so
     with voice_session(make_runtime(chat, stt=FakeStt(), tts=FakeTts(error=RuntimeError("aura down")))) as (ws, wire, _):
         segment, _ = wire.until("segment", turn=1)
         end, _ = wire.until("segment_end", turn=1, seg=0)
-        assert segment["text"] == "Hey there." and end["samples"] == 0
+        assert segment["text"] == "I'm Wren, an AI." and end["samples"] == 0
         wire.until("metrics", turn=1, outcome="complete")  # nothing to play, so the turn completes
 
 
@@ -805,7 +805,7 @@ def test_a_cough_before_the_opening_plays_keeps_it():
             ws.send_bytes(LOUD)
         send_silence(ws, stt, 0.4)
         segments = play(ws, wire, turn=1)
-        assert [s["text"] for s in segments] == ["Hey Maya.", "How's the week going?"]
+        assert [s["text"] for s in segments] == ["Hi, I'm Wren, an AI.", "How's the week going?"]
 
 
 def test_words_before_the_opening_still_replace_it():

@@ -348,6 +348,12 @@ def test_check_flags_an_opener_past_two_sentences_or_at_twenty_words():
     assert "long" in check(twenty, opening=True) and "long" not in check(twenty)
 
 
+def test_check_flags_a_semicolon():
+    assert "semicolon" in check("Your Sprout screen is tomorrow; want to practice your intro?", opening=True)
+    assert "semicolon" in check("Lead with the result; then stop.")
+    assert "semicolon" not in check("Your Sprout screen is tomorrow. Want to practice your intro?", opening=True)
+
+
 def test_summarize_reports_how_long_openers_were_held():
     replies = [replace(SampleReply("s", None, "Hi.", 1, []), held_ms=ms) for ms in (10, 30, None)]
     summary = summarize_replies(replies)

@@ -9,6 +9,7 @@ import pytest
 from app.conversation import Background, Conversation, Retrieved, reply_runs
 from app.memory.types import FeedbackNote, PipelineEntry, Profile, SearchHit
 from app.mock import CLOSER, Mock, Target
+from app.opener import FIRST_OPENING_LINE
 from app.turn import (
     CRISIS_FALLBACK,
     INTERVIEW_RESUME,
@@ -101,18 +102,18 @@ class FakeChat:
             yield d
 
 
-def test_opening_turn_skips_retrieval_and_asks_for_a_greeting():
+def test_opening_turn_skips_retrieval_and_asks_for_an_introduction():
     calls = []
 
     async def retrieve(text):
         calls.append(text)
         return Retrieved([], 0.0)
 
-    chat = FakeChat(["Hey Maya. How's the week going?"])
+    chat = FakeChat(["I'm Wren, an AI. How's the week going?"])
     timing = TurnTiming(turn=1, mode="checkin", input="opening")
     convo = conversation(turns=0, last_session=False)
     out = asyncio.run(_collect(run_turn(convo, None, retrieve=retrieve, chat=chat, timing=timing)))
-    assert out == ["Hey Maya.", "How's the week going?"]
+    assert out == ["I'm Wren, an AI.", "How's the week going?"]
     assert calls == [] and timing.retrieval_start is None
     system = chat.messages[0]["content"]
     assert "session is just starting" in system and "you're an AI" in system
@@ -156,6 +157,11 @@ def test_each_lead_puts_its_own_facts_in_the_opening_prompt(background, present,
         assert text in content, text
     for text in absent:
         assert text not in content, text
+
+
+def test_the_coming_up_opening_asks_for_two_short_sentences_and_kind_feedback():
+    content = opening_prompt(feedback=(NOTE,))
+    assert "two short sentences" in content and "put it kindly" in content
 
 
 def test_later_turns_never_see_the_opener_facts():
@@ -442,6 +448,20 @@ def test_nineteen_words_in_two_sentences_is_spoken_as_it_came():
     reply = "Maya, your Sprout screen is tomorrow, and last week you ran long on your intro. Want to tighten it?"
     chat, timing = ScriptedChat([reply]), TurnTiming(1, "checkin", "opening")
     assert len(opening_out(chat, timing)) == 2 and chat.calls == 1 and timing.reply_repair is None
+
+
+FIRST_MISS = "Hi Maya. What roles are you after?"  # it fits the shape, but never says Wren is an AI
+
+
+@pytest.mark.parametrize("second, said, repair", [
+    (["I'm Wren, an AI. What roles are you after?"], ["I'm Wren, an AI.", "What roles are you after?"], "reshaped"),
+    ([FIRST_MISS], [FIRST_OPENING_LINE], "gave_up"),
+])
+def test_a_first_opening_that_never_says_it_is_an_ai_is_asked_again(second, said, repair):
+    convo, timing = conversation(turns=0, last_session=False), TurnTiming(1, "checkin", "opening")
+    chat = ScriptedChat([FIRST_MISS], second)
+    out = asyncio.run(_collect(run_turn(convo, None, retrieve=_no_memories, chat=chat, timing=timing, utcnow=lambda: NOW)))
+    assert out == said and chat.calls == 2 and chat.retries == [False, False] and timing.reply_repair == repair
 
 
 @pytest.mark.parametrize("second", [[THREE], ["I"]])

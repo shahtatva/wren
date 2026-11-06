@@ -19,8 +19,9 @@ if nothing was said yet, it's asked for once more the same way.
 The opening. Wren speaks first, and the code picks what it leads with (opener.py): an interview since
 the last session, the next one coming up with the latest feedback, or where they left off. The prompt
 carries only that lead's facts. The opening is held until it's whole, then checked: two sentences at
-most, under twenty words, and a question only at the end (_fits_opening). A miss is asked for once
-more, keeping its reasoning, and then Wren says the lead's fixed line.
+most, under twenty words, and a question only at the end (_fits_opening). At a first session it must
+also say Wren is an AI (_fits_first_opening). A miss is asked for once more, keeping its reasoning, and
+then Wren says the lead's fixed line.
 
 Mock interviews. Wren starts one by writing a cue, [mock: company], instead of talking. The
 cue is caught before it's spoken: Wren says its switch line, an interviewer introduces itself,
@@ -206,6 +207,15 @@ def _fits_opening(segments: list[str]) -> bool:
     return len(segments) <= OPENING_SENTENCES and words < OPENING_WORDS and not any(map(_asks, segments[:-1]))
 
 
+# Saying that Wren is an AI, which the first session's opening must do (wren-voice, spec feature 7).
+_SAYS_AI = re.compile(r"\b(?:AI|A\.I\.)(?!\w)|\bartificial intelligence\b", re.IGNORECASE)
+
+
+def _fits_first_opening(segments: list[str]) -> bool:
+    """The first session's opening keeps the opening's shape and says plainly that Wren is an AI."""
+    return _fits_opening(segments) and _SAYS_AI.search(" ".join(segments)) is not None
+
+
 @cache
 def _prompt(name: str) -> str:
     return (PROMPTS / name).read_text(encoding="utf-8")
@@ -257,8 +267,9 @@ def _opening_lines(lead: Lead, today: date) -> list[str]:
         "how_did_it_go": f"- Since your last session, they had this: {entry} Open by asking how it went.",
         "same_day": f"- What you worked on earlier today: {summary} Open by offering to keep going on it.",
         "coming_up": (
-            f"- Coming up soonest: {entry} Name it and its day, but not the time. Then ask if they want to practice"
-            " one thing for it. If a feedback note below fits it, make that the thing to practice."
+            f"- Coming up soonest: {entry} Use two short sentences. First name it and its day, but not the time."
+            " Then ask if they want to practice one thing for it. If a feedback note below fits it, make that the"
+            " thing to practice, and put it kindly."
         ),
         "pick_up": f"- Last session, you worked on this: {summary} Open by offering to pick it back up.",
         "plain": "- Open with a plain check-in: one question about their search. Don't bring up an interview or a date.",
@@ -603,9 +614,10 @@ async def _wren(
     now = utcnow()
     messages = build_messages(convo, user_text, hits, now, tuning, step_out=step_out, unsaved=unsaved)
     fits = None
-    if user_text is None:  # the opening acts on no cue, and is held until it's whole to check its shape
-        today = now.astimezone(ZoneInfo(convo.tz)).date()
-        cues, fallback, fits = None, fixed_line(_opening_lead(convo, now, tuning), today), _fits_opening
+    if user_text is None:  # the opening acts on no cue, and is held until it's whole to check it
+        lead, today = _opening_lead(convo, now, tuning), now.astimezone(ZoneInfo(convo.tz)).date()
+        cues, fallback = None, fixed_line(lead, today)
+        fits = _fits_first_opening if lead.kind == "first" else _fits_opening
     elif step_out is not None:  # nor does the reply that just stepped out: a [mock] there is dropped
         cues, fallback = None, (CRISIS_FALLBACK if step_out == "crisis" else RETRY_LINE)
     else:
@@ -733,8 +745,8 @@ async def _reply(
     included. With nothing spoken, it's a reply to ask for again. For Wren's own replies, interviewer
     is the mock's name, so Wren can't speak as the interviewer either.
 
-    With fits (the opening's shape, _fits_opening), each attempt's sentences are held until it ends, and
-    spoken only if fits takes them all. An attempt that misses is asked for again like one with no whole
+    With fits (the opening's checks: _fits_opening, or _fits_first_opening at a first session), each
+    attempt's sentences are held until it ends, and spoken only if fits takes them all. An attempt that misses is asked for again like one with no whole
     sentence, but keeps its reasoning, and the second attempt spoken after it records "reshaped". call.held_ms
     is how long the spoken attempt was held.
 
@@ -784,7 +796,7 @@ async def _reply(
             elif held:  # the counts, never the words
                 missed = True
                 logger.warning(
-                    "chat model %s missed the opening's shape with %d sentences and %d words%s",
+                    "chat model %s missed the opening's checks with %d sentences and %d words%s",
                     call.model, len(held), sum(len(text.split()) for text in held),
                     " again" if attempt else ", asking again",
                 )

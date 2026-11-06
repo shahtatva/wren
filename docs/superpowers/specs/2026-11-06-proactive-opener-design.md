@@ -13,19 +13,21 @@ Built from [plans/2026-11-06-proactive-opener.md](../plans/2026-11-06-proactive-
    - First said "I'm an AI." with no name, all three times. Coming-up crammed the facts into fragments, and two of three ended a "let's" statement with a question mark.
 2. **Two lines tuned.**
    - First now asks Wren to introduce itself by name. Three of three said "I'm Wren, an AI…" and then asked one question.
-   - Coming-up now names the day but not the time, asks if they want to practice one thing, and makes fitting feedback that thing. No digits in six runs, and each of the last three ended on a "want to practice…?" offer built on the "under two minutes" feedback.
-3. **One opener per lead, as heard:**
-   - first: "I'm Wren, an AI, here to help. What roles are you focusing on right now?"
+   - Coming-up now names the day but not the time, and makes fitting feedback the thing to practice. No more digits, but two rounds still joined the clauses with a semicolon, and one round wrote a single run-on sentence.
+3. **After the branch review.** The tuning had dropped the instruction to put feedback kindly, which this design requires, and semicolons break wren-voice's rule.
+   - Coming-up now asks for two short sentences and kind feedback, and the samples tool flags any semicolon. Three of three came out as two short sentences with no semicolon, flagged 0.
+   - At a first session, the code now also checks that the opener says Wren is an AI, so that boundary no longer rests on the prompt alone. Three of three passed on the first ask.
+4. **One opener per lead, as heard:**
+   - first: "I'm Wren, an AI. What role are you focusing on right now?"
    - how-did-it-go: "How did the Velloway Analytics recruiter screen go?"
    - same-day: "Let's keep sharpening your consulting club story, focusing on the result. Ready to rehearse that part now?"
-   - coming-up: "Maya, Sprout Social BDR recruiter screen is tomorrow; want to practice keeping your answer under two minutes?"
+   - coming-up: "Sprout Social BDR screen is tomorrow, Friday. Want to practice a concise 'tell me about yourself' answer?"
    - pick-up: "We can pick up the consulting club story, Maya. Want to focus on ending with the result?"
    - plain: "How's the job search going, Maya?"
-4. **The hold costs little.** Across 27 openers the longest hold was 106 ms, and the median was 0 to 20 ms per round. The reply usually arrives in one burst after the model's reasoning.
-5. **Left for later.**
-   - Coming-up openers often join their two clauses with a semicolon (two of three in each of the last two rounds). wren-voice prefers a period. Aura-2 reads it as a short pause, and the samples tool doesn't flag it yet.
+5. **The hold costs little.** Across 33 openers the longest hold was 106 ms, and the median was 0 to 25 ms per round. The reply usually arrives in one burst after the model's reasoning.
+6. **Left for later.**
    - Spec feature 6's boxes stay open until extraction runs after live sessions and gives a real account these facts.
-   - The database tests for the new reads haven't run: the dev Supabase project was refusing connections (paused) during the build.
+   - The database tests for the new reads haven't run: the dev Supabase project was refusing connections (paused) during the build. They must pass before this merges.
 
 ## Why
 
@@ -64,7 +66,7 @@ The limit is the user's: one or two sentences, under twenty words in total.
 - Feedback is said kindly and specifically: "you ran long on", not "you ramble". Vibe memories are never used.
 - The persona card's spoken rules hold: numbers as words, and no lists, symbols or parentheses.
 
-**Checked in code.** The opener is held until it's whole, then checked: two segments at most (each segment is a sentence), under twenty words, and a question only as the last sentence (`_asks()`). A miss is asked for once more, before any audio. If that misses too, Wren says the lead's fixed line. An opener makes at most two model calls, as every reply does today. The turn records the second ask in `reply_repair`, so the samples and `turns.jsonl` show how often it happens.
+**Checked in code.** The opener is held until it's whole, then checked: two segments at most (each segment is a sentence), under twenty words, and a question only as the last sentence (`_asks()`). At a first session it must also say Wren is an AI. A miss is asked for once more, before any audio. If that misses too, Wren says the lead's fixed line. An opener makes at most two model calls, as every reply does today. The turn records the second ask in `reply_repair`, so the samples and `turns.jsonl` show how often it happens.
 
 Holding should cost only the time to write the opener's last sentence, likely tens of milliseconds on Groq. Openings aren't in the TTFA targets, since they have no end of speech. So the turn logs how long the opener was held (`held_ms`, from its first whole sentence to when it's spoken), and the samples run reports it. A before-and-after comparison of whole openings would be too noisy to show the cost.
 

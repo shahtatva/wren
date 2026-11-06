@@ -99,6 +99,8 @@ def check(reply: str, *, debrief: bool = False, in_role: bool = False, opening: 
         flags.append("digits")
     if _BRACKETS.search(reply):
         flags.append("brackets")
+    if ";" in reply:  # wren-voice: a period instead of a dash or semicolon
+        flags.append("semicolon")
     if _FILLER.search(reply):
         flags.append("filler")
     if _CLINICAL.search(reply):
