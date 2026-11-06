@@ -2,6 +2,31 @@
 
 Draft, 2026-11-06 · For [spec.md](../../spec.md) feature 6 ("Proactive opener") · Rules: [CLAUDE.md](../../../CLAUDE.md) and the wren-voice skill
 
+## Build notes (2026-11-06)
+
+Built from [plans/2026-11-06-proactive-opener.md](../plans/2026-11-06-proactive-opener.md). Heard with `python -m app.tools.samples --group opener`, on `openai/gpt-oss-120b` for every reply, with no fallbacks.
+
+1. **The starting copy, 18 openers (three per lead).**
+   - Flagged 1 of 18: a coming-up opener said "11 am" in digits, copied from the time in its prompt.
+   - Two questions 0, gave up 0. One opener was reshaped: a pick-up asked before its last sentence, and the second ask fit.
+   - How-did-it-go, same-day, pick-up and plain did their jobs in all three runs.
+   - First said "I'm an AI." with no name, all three times. Coming-up crammed the facts into fragments, and two of three ended a "let's" statement with a question mark.
+2. **Two lines tuned.**
+   - First now asks Wren to introduce itself by name. Three of three said "I'm Wren, an AI…" and then asked one question.
+   - Coming-up now names the day but not the time, asks if they want to practice one thing, and makes fitting feedback that thing. No digits in six runs, and each of the last three ended on a "want to practice…?" offer built on the "under two minutes" feedback.
+3. **One opener per lead, as heard:**
+   - first: "I'm Wren, an AI, here to help. What roles are you focusing on right now?"
+   - how-did-it-go: "How did the Velloway Analytics recruiter screen go?"
+   - same-day: "Let's keep sharpening your consulting club story, focusing on the result. Ready to rehearse that part now?"
+   - coming-up: "Maya, Sprout Social BDR recruiter screen is tomorrow; want to practice keeping your answer under two minutes?"
+   - pick-up: "We can pick up the consulting club story, Maya. Want to focus on ending with the result?"
+   - plain: "How's the job search going, Maya?"
+4. **The hold costs little.** Across 27 openers the longest hold was 106 ms, and the median was 0 to 20 ms per round. The reply usually arrives in one burst after the model's reasoning.
+5. **Left for later.**
+   - Coming-up openers often join their two clauses with a semicolon (two of three in each of the last two rounds). wren-voice prefers a period. Aura-2 reads it as a short pause, and the samples tool doesn't flag it yet.
+   - Spec feature 6's boxes stay open until extraction runs after live sessions and gives a real account these facts.
+   - The database tests for the new reads haven't run: the dev Supabase project was refusing connections (paused) during the build.
+
 ## Why
 
 Wren speaks first when a session starts. Today that line is a general greeting. `_signals()` in `voice/app/turn.py` asks for "a short greeting, then one question about their search", with the next seven days of pipeline in view and no memories. The first line is the cheapest place to show that Wren remembers. It should name what matters this week and offer one concrete next step.

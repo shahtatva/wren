@@ -250,12 +250,15 @@ def _opening_lines(lead: Lead, today: date) -> list[str]:
     entry = _sentence(_entry(lead.event, today)) if lead.event is not None else ""
     summary = _sentence(lead.summary) if lead.summary else ""
     line = {
-        "first": "- Say plainly, in a few words, that you're an AI. Then ask one question about their search.",
+        "first": (
+            "- Introduce yourself by name and say plainly that you're an AI, in a few words. Then ask one question"
+            " about their search."
+        ),
         "how_did_it_go": f"- Since your last session, they had this: {entry} Open by asking how it went.",
         "same_day": f"- What you worked on earlier today: {summary} Open by offering to keep going on it.",
         "coming_up": (
-            f"- Coming up soonest: {entry} Name it, then offer one thing to practice for it, as your question."
-            " If a feedback note below fits it, work it in kindly, in your own words."
+            f"- Coming up soonest: {entry} Name it and its day, but not the time. Then ask if they want to practice"
+            " one thing for it. If a feedback note below fits it, make that the thing to practice."
         ),
         "pick_up": f"- Last session, you worked on this: {summary} Open by offering to pick it back up.",
         "plain": "- Open with a plain check-in: one question about their search. Don't bring up an interview or a date.",
