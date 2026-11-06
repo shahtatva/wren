@@ -73,6 +73,15 @@ class PipelineEntry:
 
 
 @dataclass(frozen=True)
+class FeedbackNote:
+    """A current feedback memory, for the opener. at is when its session started, or when the memory
+    was saved if that session is gone."""
+
+    text: str
+    at: datetime
+
+
+@dataclass(frozen=True)
 class SearchHit:
     id: str
     kind: str

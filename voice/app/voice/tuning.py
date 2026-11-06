@@ -22,6 +22,7 @@ class Tuning:
     memories_k: int = 8
     retrieval_timeout_s: float = 1.5  # the most a turn waits for memories before answering without them
     pipeline_days: int = 7
+    opener_feedback: int = 3  # how many of the latest feedback memories the opener sees
     mock_questions: int = 4  # an interviewer's main questions; the last is "what questions do you have for me?"
     max_reply_tokens: int = 400
     max_step_out_tokens: int = 800  # the reply after a step-out: debriefs ran into the usual cap and lost their fix

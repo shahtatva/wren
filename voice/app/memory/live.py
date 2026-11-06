@@ -87,6 +87,26 @@ def _session_uuid(session_id: str | None) -> UUID | None:
         return None
 
 
+def load_background(conn, user_id: UUID, tz: str, now: datetime, started: datetime, tuning: Tuning) -> Background:
+    """What a session loads once, inside as_user(): the profile, the pipeline, the previous session and,
+    for the opener, the latest feedback. One pipeline read covers pipeline_days either side of today, in the
+    profile's zone. Today and after is Background.pipeline, today and before is Background.recent, so
+    today's rows are in both."""
+    profile = store.load_profile(conn, user_id)
+    today = now.astimezone(ZoneInfo(profile.timezone if profile else tz)).date()
+    window = timedelta(days=tuning.pipeline_days)
+    rows = store.pipeline_between(conn, user_id, today - window, today + window)
+    last, summary = store.previous_session(conn, user_id, started) or (None, None)
+    return Background(
+        profile,
+        tuple(row for row in rows if row.next_date >= today),
+        last,
+        recent=tuple(row for row in rows if row.next_date <= today),
+        feedback=tuple(store.recent_feedback(conn, user_id, tuning.opener_feedback)),
+        last_summary=summary,
+    )
+
+
 class PostgresMemory:
     status = "on"
 
@@ -136,13 +156,8 @@ class PostgresMemory:
                     turns = _history(transcript)
                 else:
                     session_id, started, turns = store.start_session(conn, user_id, mode, now), now, []
-                profile = store.load_profile(conn, user_id)
-                today = now.astimezone(ZoneInfo(profile.timezone if profile else tz)).date()
-                pipeline = store.upcoming_pipeline(
-                    conn, user_id, today, today + timedelta(days=self._tuning.pipeline_days)
-                )
-                last = store.last_session_started(conn, user_id, started)
-            return str(session_id), Background(profile, tuple(pipeline), last), turns
+                background = load_background(conn, user_id, tz, now, started, self._tuning)
+            return str(session_id), background, turns
 
         return await asyncio.to_thread(self._run, work)
 

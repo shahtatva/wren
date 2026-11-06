@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from app.memory.types import PipelineEntry, Profile, SearchHit
+from app.memory.types import FeedbackNote, PipelineEntry, Profile, SearchHit
 from app.mock import Mock
 from app.voice.vad import RoomTalk
 
@@ -24,8 +24,12 @@ from app.voice.vad import RoomTalk
 @dataclass(frozen=True)
 class Background:
     profile: Profile | None = None
-    pipeline: tuple[PipelineEntry, ...] = ()
+    pipeline: tuple[PipelineEntry, ...] = ()  # current rows dated today through pipeline_days ahead
     last_session_at: datetime | None = None
+    # Only the opener (opener.py) reads these. Later turns never see them.
+    recent: tuple[PipelineEntry, ...] = ()  # current rows dated pipeline_days back through today
+    feedback: tuple[FeedbackNote, ...] = ()  # the latest current feedback memories, newest first
+    last_summary: str | None = None  # the previous session's summary, once the summary job writes one
 
 
 @dataclass

@@ -18,7 +18,7 @@ import psycopg
 from psycopg import sql
 from psycopg.types.json import Jsonb
 
-from app.memory.types import ExtractedMemory, PipelineEntry, Profile, SearchHit, Session
+from app.memory.types import ExtractedMemory, FeedbackNote, PipelineEntry, Profile, SearchHit, Session
 
 # hybrid_search() ranking parameters a caller may set, and their SQL types.
 RANKING_PARAMS = {
@@ -216,13 +216,30 @@ def load_transcript(
     return (row[0], row[1], list(row[2])) if row else None
 
 
-def last_session_started(
+def previous_session(
     conn: psycopg.Connection, user_id: UUID, before: datetime, *, schema: str = "public"
-) -> datetime | None:
-    query = sql.SQL("select max(started_at) from {} where user_id = %s and started_at < %s").format(
-        sql.Identifier(schema, "sessions")
-    )
-    return conn.execute(query, (user_id, before)).fetchone()[0]
+) -> tuple[datetime, str | None] | None:
+    """When the user's latest session before `before` started, and its summary (None until the summary
+    job writes one), or None if there's no such session."""
+    query = sql.SQL(
+        "select started_at, summary from {} where user_id = %s and started_at < %s order by started_at desc limit 1"
+    ).format(sql.Identifier(schema, "sessions"))
+    row = conn.execute(query, (user_id, before)).fetchone()
+    return (row[0], row[1]) if row else None
+
+
+def recent_feedback(
+    conn: psycopg.Connection, user_id: UUID, limit: int, *, schema: str = "public"
+) -> list[FeedbackNote]:
+    """The user's latest current feedback memories, newest first, for the opener. Each is dated by when its
+    session started, or by when it was saved if that session is gone."""
+    query = sql.SQL(
+        "select m.text, coalesce(s.started_at, m.created_at) as dated_at from {memories} m "
+        "left join {sessions} s on s.id = m.source_session "
+        "where m.user_id = %s and m.kind = 'feedback' and m.superseded_by is null "
+        "order by dated_at desc, m.importance desc, m.id limit %s"
+    ).format(memories=sql.Identifier(schema, "memories"), sessions=sql.Identifier(schema, "sessions"))
+    return [FeedbackNote(text, at) for text, at in conn.execute(query, (user_id, limit)).fetchall()]
 
 
 def confirm_age(conn: psycopg.Connection, user_id: UUID, at: datetime, tz: str, *, schema: str = "public") -> None:
@@ -256,7 +273,7 @@ def load_profile(conn: psycopg.Connection, user_id: UUID, *, schema: str = "publ
     return Profile(row[0], row[1], tuple(row[2]), row[3]) if row else None
 
 
-def upcoming_pipeline(
+def pipeline_between(
     conn: psycopg.Connection, user_id: UUID, start: date, end: date, *, schema: str = "public"
 ) -> list[PipelineEntry]:
     """Current pipeline rows with a date from start to end, inclusive. Superseded rows are history."""

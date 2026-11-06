@@ -15,6 +15,7 @@ from uuid import uuid4
 import psycopg
 import pytest
 
+from app.memory.live import load_background
 from app.memory.store import (
     age_confirmed,
     append_turns,
@@ -23,15 +24,17 @@ from app.memory.store import (
     end_session,
     hybrid_search_many,
     insert_memories,
-    last_session_started,
     load_profile,
     load_transcript,
+    pipeline_between,
+    previous_session,
+    recent_feedback,
     schema_ready,
     start_session,
-    upcoming_pipeline,
     user_exists,
 )
-from app.memory.types import ExtractedMemory, Profile
+from app.memory.types import ExtractedMemory, FeedbackNote, Profile
+from app.voice.tuning import Tuning
 
 pytestmark = pytest.mark.skipif(os.environ.get("WREN_DB_TESTS") != "1", reason="set WREN_DB_TESTS=1 to run database tests")
 
@@ -141,11 +144,76 @@ def test_profile_pipeline_and_last_session(db):
 
     with as_user(conn, a):
         profile = load_profile(conn, a)
-        upcoming = upcoming_pipeline(conn, a, date(2026, 10, 16), date(2026, 10, 23))
-        last = last_session_started(conn, a, before=NOW)
+        upcoming = pipeline_between(conn, a, date(2026, 10, 16), date(2026, 10, 23))
+        last = previous_session(conn, a, before=NOW)
     assert profile == Profile("Maya", "MS in Information Management", ("BDR",), "America/New_York")
     assert [(e.company, e.next_date, e.next_time) for e in upcoming] == [("Sprout Social", date(2026, 10, 19), time(11, 0))]
-    assert last == datetime(2026, 10, 14, 18, tzinfo=UTC)
+    assert last == (datetime(2026, 10, 14, 18, tzinfo=UTC), None)
+
+
+def _session(conn, user, day, summary=None):
+    query = "insert into public.sessions (user_id, mode, started_at, summary) values (%s, 'checkin', %s, %s) returning id"
+    return conn.execute(query, (user, datetime(2026, 10, day, 18, tzinfo=UTC), summary)).fetchone()[0]
+
+
+def _memory(conn, user, session_id, text, kind="feedback"):
+    return insert_memories(conn, user, session_id, [ExtractedMemory(kind, text, (), 3, ())], [vector(len(text))])[0]
+
+
+def test_recent_feedback_is_current_newest_first_and_capped(db):
+    conn, a, b = db
+    for day in (8, 10, 12):
+        _memory(conn, a, _session(conn, a, day), f"feedback from the {day}th")
+    latest = _session(conn, a, 14)
+    kept, old = _memory(conn, a, latest, "feedback from the 14th"), _memory(conn, a, latest, "an older version")
+    conn.execute("update public.memories set superseded_by = %s where id = %s", (kept, old))
+    _memory(conn, a, latest, "a story", kind="story")
+    _memory(conn, b, _session(conn, b, 15), "b's feedback")
+    with as_user(conn, a):
+        notes = recent_feedback(conn, a, 3)
+    assert [n.text for n in notes] == ["feedback from the 14th", "feedback from the 12th", "feedback from the 10th"]
+    assert notes[0].at == datetime(2026, 10, 14, 18, tzinfo=UTC)
+    with as_user(conn, b):
+        assert recent_feedback(conn, a, 3) == []
+
+
+def test_feedback_whose_session_is_gone_is_dated_by_when_it_was_saved(db):
+    conn, a, _ = db
+    memory = _memory(conn, a, _session(conn, a, 9), "Leads with a number")
+    saved = datetime(2026, 10, 9, 20, tzinfo=UTC)
+    conn.execute("update public.memories set source_session = null, created_at = %s where id = %s", (saved, memory))
+    with as_user(conn, a):
+        assert recent_feedback(conn, a, 3) == [FeedbackNote("Leads with a number", saved)]
+
+
+def test_previous_session_brings_its_summary_and_never_an_older_one(db):
+    conn, a, _ = db
+    _session(conn, a, 10, "The user practiced the churn story.")
+    _session(conn, a, 14)
+    with as_user(conn, a):
+        assert previous_session(conn, a, before=NOW) == (datetime(2026, 10, 14, 18, tzinfo=UTC), None)
+        assert previous_session(conn, a, before=datetime(2026, 10, 12, tzinfo=UTC)) == (
+            datetime(2026, 10, 10, 18, tzinfo=UTC), "The user practiced the churn story.")
+        assert previous_session(conn, a, before=datetime(2026, 10, 1, tzinfo=UTC)) is None
+
+
+def test_the_session_loads_the_opener_facts_with_the_pipeline_split_at_today(db):
+    conn, a, _ = db
+    conn.execute(
+        "insert into public.profiles (user_id, display_name, summary, target_roles, timezone) "
+        "values (%s, 'Maya', '', '{BDR}', 'America/New_York')", (a,),
+    )
+    insert = "insert into public.pipeline (user_id, company, stage, next_date) values (%s, %s, 'recruiter screen', %s)"
+    for company, day in (("Too Old", 8), ("Velloway Analytics", 14), ("Quillbase", 16), ("Sprout Social", 19), ("Too Far", 24)):
+        conn.execute(insert, (a, company, date(2026, 10, day)))
+    _memory(conn, a, _session(conn, a, 14, "The user practiced the churn story."), "Leads with a number")
+    with as_user(conn, a):
+        background = load_background(conn, a, "UTC", NOW, NOW, Tuning())  # NOW is October 16, 7 pm in New York
+    assert [e.company for e in background.pipeline] == ["Quillbase", "Sprout Social"]
+    assert [e.company for e in background.recent] == ["Velloway Analytics", "Quillbase"]
+    assert background.last_session_at == datetime(2026, 10, 14, 18, tzinfo=UTC)
+    assert background.last_summary == "The user practiced the churn story."
+    assert [n.text for n in background.feedback] == ["Leads with a number"]
 
 
 def test_live_search_matches_owner_search(db):
