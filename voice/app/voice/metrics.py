@@ -48,8 +48,8 @@ class TurnTiming:
     context_tokens: int | None = None
     outcome: str | None = None  # complete, interrupted, continued, failed
     barge_in_ms: float | None = None  # the browser's onset-to-pause time, when interrupted
-    # dropped_tail, dropped_stacked, dropped_claim, dropped_question (the closing turn's reaction), retried or
-    # gave_up: see run_turn
+    # dropped_tail, dropped_stacked, dropped_claim, dropped_question (the closing turn's reaction), retried,
+    # reshaped (an opening asked for again after it missed its shape) or gave_up: see run_turn
     reply_repair: str | None = None
     finish_reason: str | None = None  # why the model's stream ended: "length" means the token cap
     completion_tokens: int | None = None  # reasoning plus reply, as the provider counted them
@@ -57,6 +57,7 @@ class TurnTiming:
     # own switch: it was cut before any of the switch line was heard, the floor hadn't moved on and no other
     # writer had saved a turn since. A crisis step-out is never undone, and a closing socket undoes nothing.
     switch: str | None = None
+    held_ms: int | None = None  # an opening is held until it's whole: from its first whole sentence to when it's spoken
 
     def ttfa_ms(self) -> int | None:
         return _ms(self.speech_end, self.first_audio_sent)
@@ -88,6 +89,7 @@ class TurnTiming:
             "finish_reason": self.finish_reason,
             "completion_tokens": self.completion_tokens,
             "switch": self.switch,
+            "held_ms": self.held_ms,
         }
 
 

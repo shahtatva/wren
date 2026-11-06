@@ -394,6 +394,77 @@ def test_an_opening_that_fails_twice_greets_instead_of_asking_to_repeat(last_ses
     assert ("an AI" in line) == (not last_session)  # a first session hears that Wren is an AI
 
 
+THREE = "Hey Maya. Your Sprout screen is tomorrow. Want to run it once?"
+FITS = "Maya, your Sprout screen is tomorrow. Want to run it once?"
+
+
+def opening_out(chat, timing):
+    convo = conversation(turns=0)  # Sprout's screen is tomorrow on the test clock
+    return asyncio.run(_collect(run_turn(convo, None, retrieve=_no_memories, chat=chat, timing=timing, utcnow=lambda: NOW)))
+
+
+def test_an_opening_is_held_until_it_is_whole():
+    release = asyncio.Event()
+
+    async def chat(messages, timing, **_):
+        yield "Maya, your Sprout screen is tomorrow. "
+        await release.wait()
+        yield "Want to run it once?"
+
+    async def run():
+        gen = run_turn(conversation(turns=0), None, retrieve=_no_memories, chat=chat, timing=TurnTiming(1, "checkin", "opening"))
+        first = asyncio.ensure_future(anext(gen))
+        await asyncio.sleep(0.05)
+        held = not first.done()
+        release.set()
+        return held, [await first] + [s async for s in gen]
+
+    held, out = asyncio.run(run())
+    assert held and out == ["Maya, your Sprout screen is tomorrow.", "Want to run it once?"]
+
+
+def test_an_opening_past_two_sentences_is_asked_again_keeping_its_reasoning():
+    chat, timing = ScriptedChat([THREE], [FITS]), TurnTiming(1, "checkin", "opening")
+    assert opening_out(chat, timing) == ["Maya, your Sprout screen is tomorrow.", "Want to run it once?"]
+    assert chat.calls == 2 and chat.retries == [False, False] and timing.reply_repair == "reshaped"
+
+
+@pytest.mark.parametrize("first", [
+    "Maya, your Sprout screen is tomorrow, and last week you ran long on your intro. Want to tighten it tonight?",  # twenty words
+    "How did the Velloway screen go? Tell me everything.",  # it asks before its last sentence
+])
+def test_an_opening_of_twenty_words_or_an_early_question_is_asked_again(first):
+    chat, timing = ScriptedChat([first], [FITS]), TurnTiming(1, "checkin", "opening")
+    assert opening_out(chat, timing)[-1] == "Want to run it once?" and timing.reply_repair == "reshaped"
+
+
+def test_nineteen_words_in_two_sentences_is_spoken_as_it_came():
+    reply = "Maya, your Sprout screen is tomorrow, and last week you ran long on your intro. Want to tighten it?"
+    chat, timing = ScriptedChat([reply]), TurnTiming(1, "checkin", "opening")
+    assert len(opening_out(chat, timing)) == 2 and chat.calls == 1 and timing.reply_repair is None
+
+
+@pytest.mark.parametrize("second", [[THREE], ["I"]])
+def test_an_opening_that_misses_twice_says_its_fixed_line_after_two_calls(second):
+    chat, timing = ScriptedChat([THREE], second), TurnTiming(1, "checkin", "opening")
+    assert opening_out(chat, timing) == ["Your next step with Sprout Social is tomorrow. Want to get ready for it?"]
+    assert chat.calls == 2 and chat.retries == [False, False] and timing.reply_repair == "gave_up"
+
+
+def test_an_opening_records_how_long_it_was_held():
+    async def chat(messages, timing, **_):
+        yield "Maya, your Sprout screen is tomorrow. "
+        await asyncio.sleep(0.05)
+        yield "Want to run it once?"
+
+    timing = TurnTiming(1, "checkin", "opening")
+    opening_out(chat, timing)
+    assert timing.held_ms >= 40 and timing.record()["held_ms"] == timing.held_ms
+    later = TurnTiming(3, "checkin", "voice")
+    turn_out(ScriptedChat(["Got it."]), later)
+    assert later.held_ms is None
+
+
 def test_a_retried_prompt_counts_its_tokens_once():
     chat, timing = ScriptedChat(["I"], ["Take your time."]), TurnTiming(3, "checkin", "voice")
     turn_out(chat, timing)

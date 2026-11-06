@@ -11,10 +11,16 @@ the model stops on is dropped unless it ends a sentence, so a reply cut mid-word
 spoken or saved. gpt-oss sometimes finishes an answer and starts a second one with no
 space between them; the reply ends with the first. A reply with no whole sentence at all
 (empty, or one fragment) is asked for once more, before any audio, and if that fails too
-Wren says RETRY_LINE. At the opening it greets instead, and after stepping out for a crisis it
-says where to get help (CRISIS_FALLBACK). A sentence that claims to be human
+Wren says RETRY_LINE. At the opening it says its lead's fixed line instead, and after stepping out
+for a crisis it says where to get help (CRISIS_FALLBACK). A sentence that claims to be human
 or a real person ("I'm the real recruiter") is never spoken: the reply ends before it, and
 if nothing was said yet, it's asked for once more the same way.
+
+The opening. Wren speaks first, and the code picks what it leads with (opener.py): an interview since
+the last session, the next one coming up with the latest feedback, or where they left off. The prompt
+carries only that lead's facts. The opening is held until it's whole, then checked: two sentences at
+most, under twenty words, and a question only at the end (_fits_opening). A miss is asked for once
+more, keeping its reasoning, and then Wren says the lead's fixed line.
 
 Mock interviews. Wren starts one by writing a cue, [mock: company], instead of talking. The
 cue is caught before it's spoken: Wren says its switch line, an interviewer introduces itself,
@@ -56,7 +62,7 @@ from app.mock import (
     CLOSER, CLOSER_LEAD, STEP_BACK_IN, STEP_IN, STEP_OUT, Cue, CueFilter, Mock, interviewer_name, interviewer_title,
     plain_company, resolve_target, same_company, step_out_reason,
 )
-from app.opener import FIRST_OPENING_LINE, OPENING_LINE, Lead, choose_lead
+from app.opener import Lead, choose_lead, fixed_line
 from app.voice import clock
 from app.voice.metrics import TurnTiming
 from app.voice.segment import Segmenter
@@ -188,6 +194,16 @@ def _asks(sentence: str) -> bool:
     """Whether a sentence asks something (_ENDS_ON_QUESTION, _ASK_VERB)."""
     sentence = sentence.strip()
     return _ENDS_ON_QUESTION.search(sentence) is not None or _ASK_VERB.match(sentence) is not None
+
+
+OPENING_SENTENCES, OPENING_WORDS = 2, 20  # the user's limit: one or two sentences, under twenty words in total
+
+
+def _fits_opening(segments: list[str]) -> bool:
+    """Whether the opening keeps its shape: two sentences at most, under twenty words in total, and a question
+    only as its last sentence (_asks)."""
+    words = sum(len(segment.split()) for segment in segments)
+    return len(segments) <= OPENING_SENTENCES and words < OPENING_WORDS and not any(map(_asks, segments[:-1]))
 
 
 @cache
@@ -581,9 +597,12 @@ async def _wren(
     from the interviewer, and unsaved holds this turn's mock lines. Otherwise, a [mock] cue in a reply to
     the user's words starts a mock, or picks a paused one back up."""
     hits = [] if user_text is None else await _retrieve_memories(user_text, retrieve, timing, tuning)
-    messages = build_messages(convo, user_text, hits, utcnow(), tuning, step_out=step_out, unsaved=unsaved)
-    if user_text is None:  # the opening acts on no cue
-        cues, fallback = None, (FIRST_OPENING_LINE if convo.background.last_session_at is None else OPENING_LINE)
+    now = utcnow()
+    messages = build_messages(convo, user_text, hits, now, tuning, step_out=step_out, unsaved=unsaved)
+    fits = None
+    if user_text is None:  # the opening acts on no cue, and is held until it's whole to check its shape
+        today = now.astimezone(ZoneInfo(convo.tz)).date()
+        cues, fallback, fits = None, fixed_line(_opening_lead(convo, now, tuning), today), _fits_opening
     elif step_out is not None:  # nor does the reply that just stepped out: a [mock] there is dropped
         cues, fallback = None, (CRISIS_FALLBACK if step_out == "crisis" else RETRY_LINE)
     else:
@@ -595,6 +614,7 @@ async def _wren(
     interviewer = convo.mock.name if convo.mock is not None else None  # Wren never speaks as the interviewer
     reply = _reply(
         messages, chat, timing, cues, mock=None, fallback=fallback, max_tokens=max_tokens, interviewer=interviewer,
+        fits=fits,
     )
     async with aclosing(reply) as reply:
         async for spoken in reply:
@@ -689,12 +709,12 @@ def _unsaved(mock: Mock, speaker: Literal["user", "wren"], text: str) -> History
 
 # What a later model call reports goes on the turn's timing. Its clock times don't: the turn's path
 # to first audio started before it, with a scripted line or an earlier call's reply.
-_COPIED_BACK = ("model", "chat_fallback", "finish_reason", "completion_tokens", "reply_repair")
+_COPIED_BACK = ("model", "chat_fallback", "finish_reason", "completion_tokens", "reply_repair", "held_ms")
 
 
 async def _reply(
     messages: list[dict], chat: Chat, timing: TurnTiming, cues: CueFilter | None, *, mock: int | None, fallback: str,
-    max_tokens: int | None = None, interviewer: str | None = None,
+    max_tokens: int | None = None, interviewer: str | None = None, fits: Callable[[list[str]], bool] | None = None,
 ) -> AsyncIterator[Spoken]:
     """One model call's reply, as segments spoken by Wren (mock=None) or by that mock's interviewer.
 
@@ -710,6 +730,11 @@ async def _reply(
     included. With nothing spoken, it's a reply to ask for again. For Wren's own replies, interviewer
     is the mock's name, so Wren can't speak as the interviewer either.
 
+    With fits (the opening's shape, _fits_opening), each attempt's sentences are held until it ends, and
+    spoken only if fits takes them all. An attempt that misses is asked for again like one with no whole
+    sentence, but keeps its reasoning, and the second attempt spoken after it records "reshaped". call.held_ms
+    is how long the spoken attempt was held.
+
     The call that runs before anything is spoken (run_turn sets timing.first_segment at the first
     segment) writes the turn's timing. A later one writes a scratch timing and copies back what it
     says about the model (_COPIED_BACK). context_tokens adds each prompt once, however many attempts.
@@ -724,22 +749,42 @@ async def _reply(
     call.llm_start = clock.now()
     try:
         claim: str | None = None  # the sentence the attempt before was cut at, a claim to be human
+        missed = False  # the attempt before missed fits
         for attempt in range(2):
             found.reset()
-            spoke = False
+            spoke, held, first_held = False, [], 0.0
             # The second ask runs at low reasoning (retry=True) after a reply with no whole sentence, which reasoning
-            # that filled the budget can cause. After a dropped claim it keeps its reasoning.
-            low = attempt > 0 and claim is None
+            # that filled the budget can cause. After a dropped claim or a missed shape it keeps its reasoning: at low,
+            # gpt-oss invented stories the user never told.
+            low = attempt > 0 and claim is None and not missed
+            reshaping = missed
             stream = chat(messages, call, retry=True, **cap) if low else chat(messages, call, **cap)
-            claim = None
+            claim, missed = None, False
             async with aclosing(_whole_sentences(_until_cue(stream, found), call)) as segments:
                 async for text in segments:
                     if claims_to_be_human(text, name_to_guard):  # leaving the loop closes the stream
                         found.reset()  # a cue after it goes too
                         claim, call.reply_repair = text, "dropped_claim"
                         break
-                    spoke = True
+                    if fits is None:
+                        spoke = True
+                        yield Spoken(text, mock=mock)
+                    else:  # held until the attempt ends
+                        if not held:
+                            first_held = clock.now()
+                        held.append(text)
+            if held and fits(held):
+                call.held_ms = round((clock.now() - first_held) * 1000)
+                spoke = True
+                for text in held:
                     yield Spoken(text, mock=mock)
+            elif held:  # the counts, never the words
+                missed = True
+                logger.warning(
+                    "chat model %s missed the opening's shape with %d sentences and %d words%s",
+                    call.model, len(held), sum(len(text.split()) for text in held),
+                    " again" if attempt else ", asking again",
+                )
             if found.cue is not None and (cues is None or found.cue.kind != own_cue):
                 logger.warning("chat model %s wrote %s where it isn't acted on, dropped it", call.model, found.cue)
                 found.reset()
@@ -750,9 +795,9 @@ async def _reply(
                 )
             if spoke or found.cue is not None:
                 if attempt and call.reply_repair != "dropped_claim":  # a dropped claim is the repair to see
-                    call.reply_repair = "retried"
+                    call.reply_repair = "reshaped" if reshaping else "retried"
                 return
-            if claim is None:
+            if claim is None and not missed:
                 logger.warning(
                     "chat model %s sent no whole sentence (finish %s)%s",
                     call.model, call.finish_reason, " again" if attempt else ", asking again",
