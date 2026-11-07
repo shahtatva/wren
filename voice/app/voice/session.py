@@ -51,7 +51,7 @@ from app.voice.metrics import TurnTiming, log_turn
 from app.voice.protocol import BargeIn, End, Hello, Mic, Playback, UserText, mock_message, pack_audio, parse_client
 from app.voice.stt import Stt
 from app.voice.timeline import AudioTimeline
-from app.voice.vad import BYTES_PER_MS, ClearVoice, EnergyVad, RoomTalk, rms
+from app.voice.vad import BYTES_PER_MS, ROOM_TRUST_FRAMES, ClearVoice, EnergyVad, RoomTalk, rms
 
 logger = logging.getLogger(__name__)
 
@@ -361,9 +361,9 @@ class VoiceSession:
         room_only = self._room_only()
         if room_only:
             self.room.observe(level)
-        # Until the room's level is known, a moment the owner is normally quiet in stays theirs to
-        # be quiet in: otherwise a noisy room's first second would count as their voice.
-        clear = self.room.clearly_you(level) and not (room_only and self.room.level() is None)
+        # Until the room has been heard for a while, a moment the owner is normally quiet in stays
+        # theirs to be quiet in: otherwise talk that starts early would count as their voice.
+        clear = self.room.clearly_you(level) and not (room_only and self.room.frames < ROOM_TRUST_FRAMES)
         self.you.push(clear, now, len(pcm) / BYTES_PER_MS)
         # Deepgram's words lag about a second behind the audio, so resumed voice is the first sign
         # the user hadn't finished. Wren hasn't said anything yet: start over. Only the owner's own
@@ -404,8 +404,10 @@ class VoiceSession:
             if reply is not None and self.state in ("speaking", "paused"):
                 if not is_interruption(text, reply.full_text()):
                     return  # echo of Wren, or a backchannel: never part of the user's turn
-                if self.state == "speaking" and not self._heard_you(now):
-                    return  # the page didn't pause, and the owner's voice isn't behind them: the room
+                if self.state == "speaking":
+                    # Only the page's pause lets words in while Wren speaks: it heard voice clearly
+                    # louder than the room's talkers. Without one, these are the room's.
+                    return
                 await self._interrupt(reply)
             elif reply is not None and self.state == "thinking" and real_words(text):
                 if not self._heard_you(now):

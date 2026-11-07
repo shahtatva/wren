@@ -30,6 +30,9 @@ ROOM_MARGIN = 2.0  # the owner's voice must be twice as loud as the room's talke
 MIN_YOU = 200.0  # and above EnergyVad's own start floor, which is all a quiet room asks
 CLEAR_START_MS = 200.0  # as the page's onset: 200 ms of clear voice within 260 ms
 CLEAR_WINDOW_MS = 260.0
+# The server trusts its yardstick for moments the owner is normally quiet in only after 3 s of them:
+# talk that starts just after a quiet first second would otherwise count as the owner's voice.
+ROOM_TRUST_FRAMES = 150
 
 
 def rms(frame: bytes) -> float:
@@ -85,6 +88,11 @@ class RoomTalk:
 
     def observe(self, level: float) -> None:
         self._levels.append(level)
+
+    @property
+    def frames(self) -> int:
+        """How many of the last ROOM_FRAMES levels it has heard."""
+        return len(self._levels)
 
     def level(self) -> float | None:
         if len(self._levels) < ROOM_MIN_FRAMES:
