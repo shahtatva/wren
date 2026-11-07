@@ -63,9 +63,10 @@ The margin, the percentile and the windows are the builder's to set, from the te
 
 ### Words count only with your voice
 
-- **While Wren speaks,** words interrupt if the page paused for clearly-you voice, or if the server heard clearly-you voice in the last couple of seconds. Deepgram's words lag the audio by about a second. The second route keeps voice interruption working on a phone if the page's detector misses the owner over Wren's speaker.
+- **While Wren speaks,** words interrupt only during a pause the page started for clearly-you voice. **Changed during the build:** a second route also let words in when the server alone had heard clearly-you voice in the last couple of seconds. In the browser run with a nearby talker, that route let the talker's words cut Wren's opening off: the talk started after a quiet first second, and the server's yardstick lagged it. The owner ranked pausing for the room as the worse failure, so the route is gone.
 - **Background words are ignored,** meaning words that arrive with no clearly-you voice behind them. They also stay out of the owner's next turn: no caption, and no commit.
-- **While Wren prepares a reply,** renewed voice or words cancel it only under the same check. The same rule covers words heard before the opening.
+- **While Wren prepares a reply,** renewed voice or words cancel it only if the server heard clearly-you voice in the last couple of seconds. Deepgram's words lag the audio by about a second. The same rule covers words heard before the opening.
+- **Warm-up:** the page and the server judge voice against the yardstick only after hearing 3 s of the room, while Wren speaks or prepares its opening. Before that, nothing in those moments counts as the owner's voice.
 
 ### A pause always ends
 
@@ -109,7 +110,8 @@ The owner delegated these on 2026-11-06:
 - Voice stays the way to interrupt. No tap-to-stop button in this change.
 - The yardstick is how loud other people get while Wren talks, not the room's quiet baseline, so one or two people nearby are covered, not only a crowd.
 - The page and the server use the same rule for "it's you".
-- Words interrupt Wren only with clearly-you voice behind them: either a pause from the page, or the server's own check. The server route keeps phone interruptions working if the page misses.
+- Words interrupt a speaking Wren only after a pause from the page. The server's own route was tried and dropped after the browser run, above.
+- Neither side counts voice as the owner's until it has heard 3 s of the room.
 - Background words that don't interrupt also stay out of the next turn.
 - The server's end-of-speech detection is unchanged.
 - The pause cap is about 2.5 s.

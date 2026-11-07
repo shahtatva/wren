@@ -23,7 +23,7 @@ The loop is built. Implementation plan: [plans/2026-10-16-voice-loop.md](../plan
 5. **A `metrics` message carries each turn's timings to a debug panel.**
    - It shows TTFA, the end-of-speech, first-token and first-audio timestamps, and the stage breakdown.
    - The server also logs them, and appends them to `voice/logs/turns.jsonl`.
-6. **The browser pauses Wren on 100 ms of voice within 160 ms.** Requiring 120 ms unbroken took 299 ms after a short first syllable.
+6. **The browser pauses Wren on 100 ms of voice within 160 ms.** Requiring 120 ms unbroken took 299 ms after a short first syllable. Since 2026-11-06 it's 200 ms within 260 ms, judged against the room's talkers ("Build notes: noisy rooms").
 
 Measured with memory off, because the Supabase schema isn't pushed yet. Retrieval will add to these numbers.
 
@@ -213,6 +213,34 @@ Built on the branch `deploy`. Implementation plan: [plans/2026-10-25-deploy.md](
 - The same image without Render delivers 4401 at once, and 4400 at its 5 s hello timeout.
 - The page decided from 4401 and 4410 not to reconnect, so in production a refusal or the cap looked like a dropped connection, and the page reconnected.
 - The server sends `error {code}` before each of these closes, so the page now decides from that message instead. A refusal or the cap ends the session at once, and a refusal that will pass (`age_check_failed`, `unavailable`) retries at once. The close codes still work as a fallback.
+
+## Build notes: noisy rooms (2026-11-06)
+
+Design: [2026-11-06-room-noise-design.md](2026-11-06-room-noise-design.md). Plan: [plans/2026-11-06-room-noise.md](../plans/2026-11-06-room-noise.md). The owner, on the phone in a room where people were talking: Wren paused, and sometimes never started, though no one's words could be made out.
+
+**What changed.** The owner's voice is told from the room's talkers by loudness. They talk a few inches from the phone, others a metre or more away.
+
+- **The yardstick.** The page and the server both learn how loud the room's talkers get: the 80th percentile of the last 8 s of mic levels heard while Wren talks or prepares its opening, when the owner is normally quiet. Voice counts as the owner's only when it's twice that loud (6 dB) and lasts 200 ms within 260 ms.
+- **The page pauses Wren only for that voice,** and not before it has heard 3 s of the room.
+- **While Wren speaks, only the page's pause lets words interrupt.** Other words are ignored, and kept out of the owner's next turn.
+- **While Wren prepares a reply,** voice or words cancel it only with the owner's voice within the last 2 s. A cough doesn't.
+- **The server trusts its yardstick** for moments the owner is normally quiet in only after 3 s of them.
+- **A pause holds** only while the owner's voice continues, and never past 2.5 s without words.
+
+**Measured in the browser, with the fake mic.** The talk is the sample time-reversed, which sounds like speech, 12 dB under the sample's voice (`session_e2e.py --chatter 12`).
+
+| Run | Before | After |
+| --- | --- | --- |
+| One talker nearby | 4 pauses for the room. The opening never played: its words were replaced by the room's ("Heads up."). The owner's turn was interrupted | No pauses. The opening and the reply play to the end |
+| A crowd | | 24 of 24 checks pass |
+| No talk (`--mode both`) | 46 of 46 | 46 of 46 |
+
+**Known limits:**
+
+- **While Wren listens,** clearly spoken room words still become the owner's turn. Nova-3 even turned the reversed talk into words ("The Lord is the one in the."). Gating those on the owner's voice could leave a soft-spoken owner unheard, so it's for the owner to decide.
+- **Talk that starts after a long quiet stretch** counts as the owner's for about 1.6 s, until the 80th percentile catches up. While Wren speaks, the page's pause is the only way in, and that held in the runs above.
+- **The first 3 s or so of Wren's opening can't be interrupted by voice.**
+- **If the page misses the owner over a phone speaker,** Wren talks over them until the reply ends. The owner ranked that below pausing for the room.
 
 ## Why
 
@@ -443,8 +471,15 @@ The adapter emits the same events a Flux adapter would, so trying Flux later is 
 
 **Barge-in: stop fast, then confirm.**
 
-- **Pause locally.** The page runs an energy detector on the mic frames, with an adaptive noise floor, and raises its threshold while Wren is audible. After 100 ms of voice within 160 ms, it pauses playback on the spot (a 10 ms fade, to avoid a click) and sends `barge_in`. That keeps onset to silence under 300 ms without a server round trip.
-- **Confirm with words.** The server confirms using words from Nova-3. A transcript that mostly repeats what Wren just said counts as echo. One made only of backchannels ("mm-hm", "yeah", "okay", "right") doesn't count either. Both guards apply to every transcript heard while Wren talks, so echo can never become a user turn.
+- **Pause locally.** The page runs an energy detector on the mic frames, with an adaptive noise floor, and raises its threshold while Wren is audible.
+  - Voice counts only if it's twice as loud as the room's talkers, learned while Wren talks ("Build notes: noisy rooms").
+  - After 200 ms of that voice within 260 ms, the page pauses playback on the spot (a 10 ms fade, to avoid a click) and sends `barge_in`. That keeps onset to silence under 300 ms without a server round trip.
+  - No pause comes before the page has heard 3 s of the room.
+- **Confirm with words.** The server confirms using words from Nova-3, and only during a pause the page started. Words while Wren talks with no pause are the room's, and never become a user turn.
+  - A transcript that mostly repeats what Wren just said counts as echo.
+  - One made only of backchannels ("mm-hm", "yeah", "okay", "right") doesn't count either.
+  - Both guards apply to every transcript heard while Wren talks, so echo can never become a user turn.
+  - A pause with no words ends once the owner's voice stops, or at 2.5 s, however noisy the room.
 - **Keep generating while paused.** Generation keeps running, so a false alarm resumes cleanly.
 - **Cancel on confirm.**
   1. Cancel the turn task, which closes the Groq stream.
