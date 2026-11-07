@@ -24,6 +24,7 @@ Output (socket dumps, screenshots, the fake-mic WAV) goes to voice/logs/e2e-sess
 import argparse
 import array
 import json
+import math
 import random
 import re
 import sys
@@ -100,8 +101,32 @@ def wer(reference: str, hypothesis: str) -> float:
     return row[len(hyp)] / max(1, len(ref))
 
 
-def build_mic(path: Path, lead_in_s: float, tail_s: float) -> tuple[Path, float]:
-    """sample.wav between stretches of quiet room noise, mono, at the sample's own rate."""
+def voiced_rms(samples, rate: int) -> float:
+    """RMS over the 20 ms frames that carry voice (louder than a tenth of the loudest frame)."""
+    n = max(1, rate // 50)
+    levels = [math.sqrt(sum(x * x for x in samples[i : i + n]) / n) for i in range(0, len(samples) - n + 1, n)]
+    loud = [level for level in levels if level > 0.1 * max(levels)]
+    return math.sqrt(sum(level * level for level in loud) / len(loud))
+
+
+def chatter(voice: array.array, rate: int, length: int, style: str) -> list[float]:
+    """People talking nearby, with no words to make out: the sample time-reversed. One talker
+    repeats a single copy with 1.5 s gaps, like someone taking turns; a crowd overlaps four copies."""
+    rev = voice[::-1]
+    if style == "talker":
+        unit = list(rev) + [0] * int(1.5 * rate)
+        return [float(unit[i % len(unit)]) for i in range(length)]
+    out = [0.0] * length
+    for offset_s in (0.0, 1.7, 3.1, 4.6):
+        off = int(offset_s * rate)
+        for i in range(length):
+            out[i] += rev[(i + off) % len(rev)]
+    return out
+
+
+def build_mic(path: Path, lead_in_s: float, tail_s: float, chatter_db: float | None = None, chatter_style: str = "talker") -> tuple[Path, float]:
+    """sample.wav between stretches of quiet room noise, mono, at the sample's own rate. With
+    chatter_db, people talk under the whole track, that many dB below the sample's voice."""
     with wave.open(str(SAMPLE), "rb") as src:
         rate, channels = src.getframerate(), src.getnchannels()
         assert src.getsampwidth() == 2, "expected 16-bit PCM"
@@ -114,6 +139,10 @@ def build_mic(path: Path, lead_in_s: float, tail_s: float) -> tuple[Path, float]
         return array.array("h", (rng.randint(-30, 30) for _ in range(int(seconds * rate))))
 
     track = room(lead_in_s) + voice + room(tail_s)
+    if chatter_db is not None:
+        talk = chatter(voice, rate, len(track), chatter_style)
+        gain = voiced_rms(voice, rate) * 10 ** (-chatter_db / 20) / voiced_rms(talk, rate)
+        track = array.array("h", (max(-32768, min(32767, round(a + b * gain))) for a, b in zip(track, talk)))
     path.parent.mkdir(parents=True, exist_ok=True)
     with wave.open(str(path), "wb") as out:
         out.setnchannels(1)
@@ -427,7 +456,7 @@ def text_session(p, args) -> Report:
 
 
 def voice_session(p, args) -> Report:
-    mic, sample_s = build_mic(OUT / "voice-mic.wav", args.lead_in, args.tail)
+    mic, sample_s = build_mic(OUT / f"voice-mic{args.tag}.wav", args.lead_in, args.tail, args.chatter, args.chatter_style)
     title = "Voice session: fake mic playing evals/audio/sample.wav" + (" (Chrome audio processing OFF)" if args.no_apm else "")
     s = Session(p, args, "voice" + args.tag, title, [
         "--use-fake-ui-for-media-stream",  # accept the mic prompt
@@ -439,6 +468,8 @@ def voice_session(p, args) -> Report:
     if args.no_apm:
         page.add_init_script(NO_APM)
     r.sections["fake mic"] = [f"{mic}: {args.lead_in:.0f} s quiet room, sample.wav ({sample_s:.1f} s), {args.tail:.0f} s quiet; played once"]
+    if args.chatter is not None:
+        r.sections["fake mic"].append(f"people talking under all of it ({args.chatter_style}), {args.chatter:g} dB below the sample's voice")
     try:
         s.open_talk()
         s.t0 = time.monotonic()
@@ -505,10 +536,16 @@ def voice_session(p, args) -> Report:
         room = sorted(rms for at, rms, _, _ in levels if at < s.page_ms(s.t0) + (args.lead_in - 2) * 1000)
         floor = f"room level median {room[len(room) // 2]:.4f}" if room else "no lead-in frames left in the trace"
         expected = args.lead_in + 0.72  # the sample's first word, per the reference
-        r.check("the page heard the sample when expected", start is not None and abs(start - expected) < 2.0,
-                (f"sustained voice from {start:.1f} s after the click (first word expected at {expected:.1f} s), " if start is not None
-                 else f"no sustained voice above {SPEECH} in {len(levels)} frames, ")
-                + f"peak level {max((f[1] for f in levels), default=0):.3f}, {floor}")
+        if args.chatter is None:  # with people talking, "sustained voice" is theirs from the start
+            r.check("the page heard the sample when expected", start is not None and abs(start - expected) < 2.0,
+                    (f"sustained voice from {start:.1f} s after the click (first word expected at {expected:.1f} s), " if start is not None
+                     else f"no sustained voice above {SPEECH} in {len(levels)} frames, ")
+                    + f"peak level {max((f[1] for f in levels), default=0):.3f}, {floor}")
+        else:
+            pauses = [at - s.t0 for at, payload in wire.sent if isinstance(payload, str) and '"barge_in"' in payload]
+            r.check("the page never paused Wren for the room", not pauses,
+                    f"{len(pauses)} barge_in sent" + (f", at {', '.join(f'{t:.1f}' for t in pauses)} s" if pauses else "")
+                    + f"; {floor}")
 
         r.sections["conversation on the page"] = [f"{who}: {text}" for who, text in s.lines()]
         page.screenshot(path=str(OUT / f"{s.name}-session.png"), full_page=True)
@@ -537,6 +574,10 @@ def main() -> int:
     parser.add_argument("--tail", type=float, default=40.0, help="seconds of quiet room after it")
     parser.add_argument("--no-apm", action="store_true", help="diagnostic: voice session with Chrome's audio processing off")
     parser.add_argument("--tag", default="", help="suffix for this run's output files")
+    parser.add_argument("--chatter", type=float, default=None, metavar="DB",
+                        help="voice session: people talking under the whole fake-mic track, DB below the sample's voice")
+    parser.add_argument("--chatter-style", choices=("talker", "crowd"), default="talker",
+                        help="one person nearby taking turns (default), or a crowd")
     args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     reports = []
