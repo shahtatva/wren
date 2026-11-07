@@ -115,6 +115,7 @@ export class VoiceClient {
   /** Call from a tap: browsers only start audio from a user gesture. */
   async start(): Promise<void> {
     this.stopped = false;
+    this.openingPending = true; // until "ready" says it resumed: the mic's first frames teach the room
     this.setStatus("connecting");
     if (this.options.voiceOut !== false) {
       try {

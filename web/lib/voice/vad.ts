@@ -23,6 +23,7 @@ const ROOM_FRAMES = 400; // the last 8 s of 20 ms frames heard while Wren speaks
 const ROOM_MIN_FRAMES = 50; // a second of them before the room's level counts
 const ROOM_PERCENTILE = 0.8; // how loud the talkers get; the owner's short cut-ins stay under a fifth
 const ROOM_MARGIN = 2; // the owner's voice must be twice as loud as the room's talkers (6 dB)
+const ROOM_TRUST_FRAMES = 150; // no pause until 3 s of the room are heard: early talk mustn't count as the owner
 
 /** How loud the room's talkers get: a high percentile of the levels heard while the owner is quiet. */
 export class RoomTalk {
@@ -31,6 +32,11 @@ export class RoomTalk {
   observe(rms: number): void {
     this.levels.push(rms);
     if (this.levels.length > ROOM_FRAMES) this.levels.shift();
+  }
+
+  /** How many of the last ROOM_FRAMES levels it has heard. */
+  get frames(): number {
+    return this.levels.length;
   }
 
   level(): number | null {
@@ -62,6 +68,9 @@ export class Vad {
     let bar = Math.max(this.floor * 3, MIN_RMS) * (wrenSpeaking ? this.speakingBoost : 1);
     const talkers = wrenSpeaking ? this.room.level() : null;
     if (talkers !== null) bar = Math.max(bar, talkers * ROOM_MARGIN);
+    // Until the room has been heard for a while, people who start talking as Wren does could be
+    // taken for the owner: Wren keeps talking.
+    if (wrenSpeaking && this.room.frames < ROOM_TRUST_FRAMES) bar = Infinity;
     const voiced = rms > bar;
     this.recent.push({ at: nowMs, voiced });
     while (this.recent.length && this.recent[0].at <= nowMs - WINDOW_MS) this.recent.shift();

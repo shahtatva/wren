@@ -28,6 +28,13 @@ function talk(seconds: number, loud = 0.04, quiet = 0.002): number[] {
   return levels.slice(0, frames);
 }
 
+// A quiet room heard for 3 s while Wren speaks: long enough to trust what it learned.
+function trustedQuietRoom(): Vad {
+  const vad = new Vad();
+  feed(vad, Array(150).fill(0.001), true, -3000);
+  return vad;
+}
+
 // A room with people talking, heard for 2 s before Wren's opening plays.
 function roomOfTalkers(): Vad {
   const vad = new Vad();
@@ -60,8 +67,16 @@ test("vad fires once per stretch of speech", () => {
 
 test("vad needs more energy while Wren is speaking", () => {
   assert.deepEqual(feed(quietRoom(), Array(10).fill(0.01), false, 400), [580]);
-  assert.deepEqual(feed(quietRoom(), Array(10).fill(0.01), true, 400), []); // could be Wren's own echo
-  assert.deepEqual(feed(quietRoom(), Array(10).fill(0.1), true, 400), [580]);
+  assert.deepEqual(feed(trustedQuietRoom(), Array(10).fill(0.01), true, 400), []); // could be Wren's own echo
+  assert.deepEqual(feed(trustedQuietRoom(), Array(10).fill(0.1), true, 400), [580]);
+});
+
+test("Wren isn't paused before the room has been heard for 3 s", () => {
+  const vad = new Vad();
+  feed(vad, Array(25).fill(0.001), false, 0, true); // half a second of a quiet room before the opening
+  assert.deepEqual(feed(vad, talk(2), true, 500), [], "people who start talking as Wren does aren't the owner");
+  assert.deepEqual(feed(vad, talk(1), true, 2500), [], "and once it trusts the room, they still aren't");
+  assert.deepEqual(feed(vad, Array(15).fill(0.3), true, 3500), [3680], "while the owner still pauses Wren");
 });
 
 test("a short click is not an onset", () => {

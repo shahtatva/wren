@@ -133,7 +133,8 @@ async function startedClient(options: Started = {}) {
   socket.receive({ type: "ready", session_id: "s1", voice: true, memory: "off: test", model: "m", resumed: false });
   const hear = (rms: number) => frames({ pcm: new ArrayBuffer(640), rms });
   const speakOver = async () => {
-    for (let i = 0; i < 12; i++) hear(0.5); // 240 ms of loud voice
+    for (let i = 0; i < 150; i++) hear(0.001); // 3 s of a quiet room while Wren talks, as on a real call
+    for (let i = 0; i < 12; i++) hear(0.5); // then 240 ms of loud voice
     await settle();
   };
   return { client, socket, player, mic, events, fetches, speakOver, hear };
