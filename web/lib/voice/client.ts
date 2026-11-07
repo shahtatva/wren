@@ -100,6 +100,7 @@ export class VoiceClient {
   private pendingText: string[] = [];
   private localTurn = 0; // POST /turn replies get negative turn numbers, never a server's
   private refusal: RefusalCode | null = null; // from the server's last error, acted on when the socket closes
+  private openingPending = false; // a new session's opening hasn't been heard yet
   private readonly tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   // With ?debug=1, the last minute of mic levels, for tuning the barge-in detector.
   private readonly levels: [number, number, boolean, string][] | null =
@@ -278,6 +279,7 @@ export class VoiceClient {
       case "ready":
         this.sessionId = m.session_id;
         this.attempts = 0;
+        this.openingPending = !m.resumed; // a new session opens with Wren speaking first
         this.emit({ type: "ready", voice: m.voice, memory: m.memory, model: m.model });
         this.serverHears = m.voice;
         this.updateHearing();
@@ -381,7 +383,10 @@ export class VoiceClient {
       if (this.levels.length > 3000) this.levels.splice(0, 1000);
       (window as unknown as { __wrenLevels?: unknown }).__wrenLevels = this.levels;
     }
-    const onset = this.vad.push(frame.rms, now, audible) === "onset";
+    // Before the opening's first audio the owner is normally quiet too, so those frames teach the
+    // detector the room before Wren says a word.
+    if (audible) this.openingPending = false;
+    const onset = this.vad.push(frame.rms, now, audible, 20, audible || this.openingPending) === "onset";
     if (onset && this.micOn && this.status === "speaking" && !this.pausing && this.player) void this.bargeIn(now);
   }
 

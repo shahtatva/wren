@@ -131,11 +131,12 @@ async function startedClient(options: Started = {}) {
   const socket = FakeSocket.made[0];
   socket.open();
   socket.receive({ type: "ready", session_id: "s1", voice: true, memory: "off: test", model: "m", resumed: false });
+  const hear = (rms: number) => frames({ pcm: new ArrayBuffer(640), rms });
   const speakOver = async () => {
-    for (let i = 0; i < 6; i++) frames({ pcm: new ArrayBuffer(640), rms: 0.5 }); // 120 ms of loud voice
+    for (let i = 0; i < 12; i++) hear(0.5); // 240 ms of loud voice
     await settle();
   };
-  return { client, socket, player, mic, events, fetches, speakOver };
+  return { client, socket, player, mic, events, fetches, speakOver, hear };
 }
 
 function lastStatus(events: ClientEvent[]) {
@@ -155,6 +156,28 @@ test("after the session cap, the client lets go of the mic and the session for g
   await client.sendText("one more thing");
   assert.deepEqual(fetches, [], "nothing reaches the capped session");
   assert.equal(FakeSocket.made.length, 1, "and nothing reconnects to it");
+});
+
+test("room talk before and during the opening doesn't pause Wren", async () => {
+  let clock = 0;
+  swap(performance, "now", () => clock);
+  const { socket, player, hear, speakOver } = await startedClient();
+  const talk = (frames: number) => {
+    for (let i = 0; i < frames; i++) {
+      clock += 20;
+      hear(i % 25 < 15 ? 0.04 : 0.002); // people nearby taking turns: 0.3 s of voice, a 0.2 s gap
+    }
+  };
+  player.audible = false; // the opening is still being prepared
+  talk(100);
+  player.audible = true;
+  player.emit({ type: "segment-start", turn: 1, seg: 0 });
+  talk(400);
+  await settle();
+  const bargeIns = () => socket.messages().filter((message) => message.type === "barge_in").length;
+  assert.equal(bargeIns(), 0, "Wren talks through the room");
+  await speakOver();
+  assert.equal(bargeIns(), 1, "and still stops for the owner's voice");
 });
 
 test("a resume for another turn doesn't unpause Wren", async () => {
