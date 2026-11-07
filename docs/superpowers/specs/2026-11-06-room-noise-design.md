@@ -49,7 +49,7 @@ A low percentile of all frames, the room's quiet baseline, doesn't work for this
 
 So the yardstick is **how loud other people get while Wren talks**, because that's when the owner is normally quiet:
 
-- **The room's talkers:** a high percentile (around the 90th) of the mic level over the last several seconds of frames heard while Wren is speaking, and while Wren prepares its opening. That level also takes in whatever of Wren's own voice leaks back.
+- **The room's talkers:** a high percentile (around the 80th, so short overlaps by the owner never become the yardstick) of the mic level over the last several seconds of frames heard while Wren is speaking, and while Wren prepares its opening. That level also takes in whatever of Wren's own voice leaks back.
 - **Clearly you:** a frame some margin louder than the room's talkers, and above today's absolute floors, so a quiet room behaves as it does today.
 
 Both detectors use this rule:
