@@ -261,6 +261,20 @@ def play(ws, wire: Wire, turn: int) -> list[dict]:
     return segments
 
 
+def send_audio(ws, stt: FakeStt, frame: bytes, seconds: float, pace: bool = False):
+    """`seconds` of one 20 ms frame, then wait until the session has forwarded it. `pace` sends in real time."""
+    frames = int(round(seconds / 0.02))
+    expected = stt.sent_bytes + frames * len(frame)
+    for _ in range(frames):
+        ws.send_bytes(frame)
+        if pace:
+            time.sleep(0.02)
+    deadline = time.monotonic() + 5
+    while stt.sent_bytes < expected:
+        assert time.monotonic() < deadline, "the session never forwarded the audio"
+        time.sleep(0.01)
+
+
 def send_silence(ws, stt: FakeStt, seconds: float):
     frames = int(seconds / 0.02)
     expected = stt.sent_bytes + frames * 640

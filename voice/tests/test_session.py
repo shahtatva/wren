@@ -26,6 +26,7 @@ from tests.voice_fakes import (
     Wire,
     make_runtime,
     play,
+    send_audio,
     send_silence,
     voice_session,
 )
@@ -305,6 +306,7 @@ def test_speech_while_thinking_merges_into_one_user_turn():
         send_silence(ws, stt, 1.5)
         stt.emit(final("Sprout moved my screen", 0.1, 0.9))
         wire.until("user_turn", turn=2, text="Sprout moved my screen")
+        send_audio(ws, stt, LOUD, 0.3)  # they're still talking, at the phone
         stt.emit(SpeechStarted(1.0))
         stt.emit(interim("to Monday", 1.0, 1.2))
         end, _ = wire.until("reply_end", turn=2)
@@ -329,7 +331,7 @@ def test_resumed_speech_while_thinking_merges_before_any_words_arrive():
         send_silence(ws, stt, 1.0)
         stt.emit(final("Can you help me tighten my", 0.1, 0.9))
         wire.until("user_turn", turn=2)
-        for _ in range(5):  # they keep talking; Deepgram's words for it are still a second away
+        for _ in range(15):  # they keep talking; Deepgram's words for it are still a second away
             ws.send_bytes(LOUD)
         end, _ = wire.until("reply_end", turn=2)
         assert end["outcome"] == "continued"
@@ -340,19 +342,148 @@ def test_resumed_speech_while_thinking_merges_before_any_words_arrive():
         session.__exit__(None, None, None)
 
 
-def test_a_cough_while_thinking_recommits_the_first_part():
+def test_a_long_noise_while_thinking_recommits_the_first_part():
     chat = FakeChat([OPENING, ["never said"], ["Got it."]], hang_before={1})
     session, ws, wire, ready, stt, rt = speaking_session(chat)
     try:
         send_silence(ws, stt, 1.0)
         stt.emit(final("Sprout moved my screen", 0.1, 0.9))
         wire.until("user_turn", turn=2)
-        for _ in range(5):
+        for _ in range(15):  # 300 ms of their voice, long enough to be them
             ws.send_bytes(LOUD)
         wire.until("reply_end", turn=2, outcome="continued")
         send_silence(ws, stt, 0.4)  # quiet again, and no words ever come
         again, _ = wire.until("user_turn", turn=3, timeout=3)
         assert again["text"] == "Sprout moved my screen"
+    finally:
+        session.__exit__(None, None, None)
+
+
+ROOM = b"\x00\x06" * 320  # 20 ms of people talking a metre or two away: an eighth as loud as LOUD
+
+
+def room_session(chat, **tuning):
+    """A session that heard people talking nearby while Wren prepared its opening, then played it.
+    The chat should delay the opening (delay_before={0: 1.0}) so the talk lands while Wren prepares."""
+    stt = FakeStt()
+    session = voice_session(make_runtime(chat, stt=stt, tuning=replace(FAST, **tuning)))
+    ws, wire, ready = session.__enter__()
+    send_audio(ws, stt, ROOM, 1.2)
+    send_silence(ws, stt, 0.4)  # a lull
+    play(ws, wire, turn=1)
+    return session, ws, wire, stt
+
+
+def speaking_turn_2(ws, wire):
+    """Reply 2 starts playing and keeps playing: the page never reports its end."""
+    ws.send_json({"type": "user_text", "text": "Feedback please"})
+    wire.until("segment_end", turn=2, seg=1)
+    ws.send_json({"type": "playback", "turn": 2, "seg": 0, "event": "start"})
+
+
+TWO_LINES = ["Lead with the number. ", "Then the result. "]
+
+
+def test_room_talk_while_wren_prepares_doesnt_cancel_the_reply():
+    session, ws, wire, stt = room_session(FakeChat([OPENING, ["Sure, let's start."]], delay_before={0: 1.0, 1: 1.0}))
+    try:
+        ws.send_json({"type": "user_text", "text": "Talk to me"})
+        send_audio(ws, stt, ROOM, 0.6)  # still talking while Wren prepares its answer
+        end, _ = wire.until("reply_end", turn=2, timeout=5)
+        assert end["outcome"] == "complete"
+    finally:
+        session.__exit__(None, None, None)
+
+
+def test_a_short_cough_while_wren_prepares_doesnt_cancel_the_reply():
+    chat = FakeChat([OPENING, ["Got it."]], delay_before={1: 1.0})
+    session, ws, wire, ready, stt, rt = speaking_session(chat)
+    try:
+        ws.send_json({"type": "user_text", "text": "Sprout moved my screen"})
+        send_silence(ws, stt, 0.2)
+        send_audio(ws, stt, LOUD, 0.1)  # a cough: too short to be the owner talking
+        send_silence(ws, stt, 0.4)
+        end, _ = wire.until("reply_end", turn=2, timeout=5)
+        assert end["outcome"] == "complete"
+    finally:
+        session.__exit__(None, None, None)
+
+
+def test_a_pause_with_no_words_resumes_despite_room_noise():
+    session, ws, wire, stt = room_session(FakeChat([OPENING, TWO_LINES], delay_before={0: 1.0}), playback_grace_s=5.0)
+    try:
+        speaking_turn_2(ws, wire)
+        ws.send_json({"type": "barge_in", "turn": 2, "seg": 0, "played_ms": 80, "onset_ms": 110})
+        send_audio(ws, stt, ROOM, 1.0, pace=True)  # the room keeps talking, and no words of theirs come
+        wire.until("resume", turn=2, timeout=0.5)
+    finally:
+        session.__exit__(None, None, None)
+
+
+def test_a_pause_ends_at_the_cap_even_while_voice_continues():
+    chat = FakeChat([OPENING, TWO_LINES])
+    session, ws, wire, ready, stt, rt = speaking_session(chat, tuning=replace(FAST, playback_grace_s=8.0, pause_cap_s=1.0))
+    try:
+        speaking_turn_2(ws, wire)
+        ws.send_json({"type": "barge_in", "turn": 2, "seg": 0, "played_ms": 80, "onset_ms": 110})
+        send_audio(ws, stt, LOUD, 1.6, pace=True)  # loud and steady, but no words ever come
+        wire.until("resume", turn=2, timeout=0.5)
+    finally:
+        session.__exit__(None, None, None)
+
+
+def test_background_words_while_wren_speaks_are_ignored():
+    chat = FakeChat([OPENING, TWO_LINES, ["Sure."]], delay_before={0: 1.0})
+    session, ws, wire, stt = room_session(chat, playback_grace_s=5.0)
+    try:
+        speaking_turn_2(ws, wire)
+        send_audio(ws, stt, ROOM, 0.3)
+        stt.emit(final("did you see the game last night", 0.1, 0.9))
+        assert not [m for m in wire.quiet(0.4) if m["type"] == "interrupt"]
+        ws.send_json({"type": "playback", "turn": 2, "seg": 0, "event": "end"})
+        ws.send_json({"type": "playback", "turn": 2, "seg": 1, "event": "start"})
+        ws.send_json({"type": "playback", "turn": 2, "seg": 1, "event": "end"})
+        wire.until("metrics", turn=2, outcome="complete")
+        send_audio(ws, stt, LOUD, 0.3)
+        send_silence(ws, stt, 0.4)
+        stt.emit(final("Tell me more.", 1.0, 1.4))
+        user, _ = wire.until("user_turn", turn=3)
+        assert user["text"] == "Tell me more."  # the room's words never joined the owner's turn
+    finally:
+        session.__exit__(None, None, None)
+
+
+def test_your_words_interrupt_without_a_page_pause():
+    session, ws, wire, stt = room_session(FakeChat([OPENING, TWO_LINES], delay_before={0: 1.0}), playback_grace_s=5.0)
+    try:
+        speaking_turn_2(ws, wire)
+        send_audio(ws, stt, LOUD, 0.3)  # the owner, at the phone; the page missed it over Wren's voice
+        stt.emit(final("Wait, stop.", 0.1, 0.4))
+        wire.until("interrupt", turn=2, timeout=2)
+    finally:
+        session.__exit__(None, None, None)
+
+
+def test_words_soon_after_your_voice_still_count():
+    session, ws, wire, stt = room_session(FakeChat([OPENING, TWO_LINES], delay_before={0: 1.0}), playback_grace_s=5.0)
+    try:
+        speaking_turn_2(ws, wire)
+        send_audio(ws, stt, LOUD, 0.3)
+        send_audio(ws, stt, ROOM, 1.5, pace=True)  # Deepgram's words for it lag behind
+        stt.emit(final("Hold on.", 0.1, 0.4))
+        wire.until("interrupt", turn=2, timeout=2)
+    finally:
+        session.__exit__(None, None, None)
+
+
+def test_words_long_after_your_voice_dont_count():
+    session, ws, wire, stt = room_session(FakeChat([OPENING, TWO_LINES], delay_before={0: 1.0}), playback_grace_s=8.0)
+    try:
+        speaking_turn_2(ws, wire)
+        send_audio(ws, stt, LOUD, 0.3)
+        send_audio(ws, stt, ROOM, 2.5, pace=True)
+        stt.emit(final("Hold on.", 0.1, 0.4))
+        assert not [m for m in wire.quiet(0.4) if m["type"] == "interrupt"]
     finally:
         session.__exit__(None, None, None)
 
@@ -606,7 +737,8 @@ def test_words_before_the_opening_still_replace_it():
     stt = FakeStt()
     rt = make_runtime(FakeChat([OPENING, ["Sure. Start with your opener."]], hang_before={0}), stt=stt)
     with voice_session(rt) as (ws, wire, _):
-        send_silence(ws, stt, 0.2)
+        send_silence(ws, stt, 1.2)  # a second of the room, so it's known to be quiet
+        send_audio(ws, stt, LOUD, 0.3)  # then the owner talks first
         stt.emit(final("Can we practice my Sprout answer?", 0.1, 0.9))
         end, _ = wire.until("reply_end", turn=1)
         assert end["outcome"] == "continued"
@@ -790,6 +922,8 @@ def test_a_crisis_step_out_stands_even_if_its_line_was_never_heard():
         play(ws, wire, turn=2)
         ws.send_json({"type": "user_text", "text": "Honestly I want to end my life."})
         wire.until("segment_end", turn=3, seg=1)  # neither line has started playing
+        send_silence(ws, stt, 1.2)  # the mic hears a quiet room while Wren speaks
+        send_audio(ws, stt, LOUD, 0.3)
         stt.emit(interim("sorry, ignore that"))
         _, cut = wire.until("interrupt", turn=3)
         stt.emit(final("Sorry, ignore that.", 0.1, 0.9))
@@ -895,6 +1029,8 @@ def test_a_switch_another_turn_has_built_on_stays_after_a_barge_in(caplog):
                 body = {"text": "I studied information management.", "session_id": ready["session_id"]}
                 answered = client.post("/turn", json=body, headers={"origin": ORIGIN}).text
                 assert '"role": "interviewer"' in answered  # POST /turn answered in that mock and saved its turns
+                send_silence(ws, stt, 1.2)  # the mic hears a quiet room while Wren speaks
+                send_audio(ws, stt, LOUD, 0.3)
                 stt.emit(interim("wait, one more thing"))  # a barge-in on the live socket
                 metrics, seen = wire.until("metrics", turn=2, outcome="interrupted")
                 assert metrics["switch"] == "mock_start" and not [m for m in seen if m["type"] == "mock"]

@@ -51,7 +51,7 @@ from app.voice.metrics import TurnTiming, log_turn
 from app.voice.protocol import BargeIn, End, Hello, Mic, Playback, UserText, mock_message, pack_audio, parse_client
 from app.voice.stt import Stt
 from app.voice.timeline import AudioTimeline
-from app.voice.vad import EnergyVad
+from app.voice.vad import BYTES_PER_MS, ClearVoice, EnergyVad, RoomTalk, rms
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +131,10 @@ class VoiceSession:
         tuning = runtime.tuning
         self.endpoint = EndOfTurn(tuning.hold_s(hello.mode))
         self.vad = EnergyVad(tuning.vad_silence_ms)
+        # Other people talking nearby mustn't stop Wren (docs/superpowers/specs/2026-11-06-room-noise-design.md):
+        # how loud the room's talkers get, and when the owner's own voice was last heard over them.
+        self.room = RoomTalk()
+        self.you = ClearVoice()
         self.timeline = AudioTimeline()
         self.state = "listening"
         self.reply: Reply | None = None
@@ -336,6 +340,15 @@ class VoiceSession:
         except Exception:
             return False  # the reader notices the closed stream
 
+    def _room_only(self) -> bool:
+        """The owner is normally quiet now: Wren is speaking, or preparing its opening."""
+        reply = self.reply
+        return self.state == "speaking" or (self.state == "thinking" and reply is not None and reply.user_text is None)
+
+    def _heard_you(self, now: float) -> bool:
+        """The owner's own voice was heard recently enough to be behind words arriving now."""
+        return self.you.heard_within(now, self.rt.tuning.heard_you_s)
+
     async def _on_audio(self, pcm: bytes) -> None:
         if not self.mic_on or self.stt is None:
             return
@@ -344,15 +357,27 @@ class VoiceSession:
         self._last_audio = now
         if not await self._to_stt(self.stt, self.stt.send(pcm)):
             return
+        level = rms(pcm)
+        room_only = self._room_only()
+        if room_only:
+            self.room.observe(level)
+        # Until the room's level is known, a moment the owner is normally quiet in stays theirs to
+        # be quiet in: otherwise a noisy room's first second would count as their voice.
+        clear = self.room.clearly_you(level) and not (room_only and self.room.level() is None)
+        self.you.push(clear, now, len(pcm) / BYTES_PER_MS)
+        # Deepgram's words lag about a second behind the audio, so resumed voice is the first sign
+        # the user hadn't finished. Wren hasn't said anything yet: start over. Only the owner's own
+        # voice counts, held long enough: not the room's talkers, and not a cough. The opening
+        # answers nobody, so it isn't cancelled this way; real words still do (_on_stt).
+        if (
+            self.you.last_at == now and self.state == "thinking"
+            and self.reply is not None and self.reply.user_text is not None
+        ):
+            await self._continue(self.reply)
         heard = self.vad.push(pcm)
         if heard == "start":
             self._last_speech = now
             self.endpoint.speech_resumed()
-            # Deepgram's words lag about a second behind the audio, so resumed speech is the
-            # first sign the user hadn't finished. Wren hasn't said anything yet: start over.
-            # The opening answers nobody, so a cough mustn't cancel it; real words still do (_on_stt).
-            if self.state == "thinking" and self.reply is not None and self.reply.user_text is not None:
-                await self._continue(self.reply)
         elif heard == "end":
             if (stt := self.stt) is not None:
                 await self._to_stt(stt, stt.finalize())
@@ -379,8 +404,12 @@ class VoiceSession:
             if reply is not None and self.state in ("speaking", "paused"):
                 if not is_interruption(text, reply.full_text()):
                     return  # echo of Wren, or a backchannel: never part of the user's turn
+                if self.state == "speaking" and not self._heard_you(now):
+                    return  # the page didn't pause, and the owner's voice isn't behind them: the room
                 await self._interrupt(reply)
             elif reply is not None and self.state == "thinking" and real_words(text):
+                if not self._heard_you(now):
+                    return  # the room's talkers, not the owner going on
                 await self._continue(reply)
         commit = self.endpoint.on_transcript(event, now)
         if commit is not None:
@@ -648,10 +677,12 @@ class VoiceSession:
                 await self._start_reply(text, "voice", speech_end=speech_end)
         reply = self.reply
         # Resume a pause only once the user has gone quiet: Deepgram's words lag the audio,
-        # so someone still talking is still interrupting even before their words arrive.
+        # so someone still talking is still interrupting even before their words arrive. Only the
+        # owner's own voice holds a pause, not the room's talkers, and never past the cap without words.
+        paused_for = now - self._paused_at
         if (
-            self.state == "paused" and reply is not None and not self.vad.speaking
-            and now - self._paused_at >= tuning.confirm_window_s
+            self.state == "paused" and reply is not None and paused_for >= tuning.confirm_window_s
+            and (not self.you.heard_within(now, tuning.vad_silence_ms / 1000) or paused_for >= tuning.pause_cap_s)
         ):
             reply.paused_s += now - self._paused_at
             self.state, reply.pause, reply.timing.barge_in_ms = "speaking", None, None

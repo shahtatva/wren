@@ -11,6 +11,8 @@ class Tuning:
     hold_checkin_s: float = 0.0  # extra wait after speech_final before a turn commits
     hold_mock_s: float = 0.7  # mocks are patient: people pause to think mid-answer
     confirm_window_s: float = 1.2  # how long a paused barge-in waits for real words
+    pause_cap_s: float = 2.5  # a pause that gets no words ends by then, however noisy the room
+    heard_you_s: float = 2.0  # words count as the owner's if their voice was heard this recently
     idle_s: float = 120.0  # close speech-to-text after this long without speech
     session_cap_s: float = 2700.0  # 45 minutes
     hello_timeout_s: float = 5.0
