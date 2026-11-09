@@ -40,7 +40,7 @@ from fastapi import WebSocket
 
 from app.conversation import Conversation, reply_runs
 from app.memory.live import NoMemory
-from app.mock import Mock
+from app.mock import Mock, step_out_reason
 from app.runtime import Runtime
 from app.turn import run_turn
 from app.voice import clock
@@ -225,6 +225,7 @@ class VoiceSession:
             self.convo = Conversation(session_id, self.user_id, self.hello.mode, self.hello.tz, background, turns)
             self.rt.registry.put(self.convo)
         self.endpoint.hold_s = self.rt.tuning.hold_s(self.convo.turn_mode)  # a reconnect can land mid-mock
+        self.room = self.convo.room  # a reconnect mustn't forget what the room sounds like
         resumed = bool(self.convo.turns)
         await self._connect_stt()
         if self._speaks:
@@ -404,13 +405,16 @@ class VoiceSession:
             if reply is not None and self.state in ("speaking", "paused"):
                 if not is_interruption(text, reply.full_text()):
                     return  # echo of Wren, or a backchannel: never part of the user's turn
-                if self.state == "speaking":
+                if self.state == "speaking" and step_out_reason(text) != "crisis":
                     # Only the page's pause lets words in while Wren speaks: it heard voice clearly
-                    # louder than the room's talkers. Without one, these are the room's.
+                    # louder than the room's talkers. Without one, these are the room's. A crisis
+                    # always gets through: it must never be dropped (CLAUDE.md, Wren's boundaries).
+                    logger.info("ignored words while Wren spoke: no pause from the page")
                     return
                 await self._interrupt(reply)
             elif reply is not None and self.state == "thinking" and real_words(text):
                 if not self._heard_you(now):
+                    logger.info("ignored words while Wren prepared a reply: not the owner's voice")
                     return  # the room's talkers, not the owner going on
                 await self._continue(reply)
         commit = self.endpoint.on_transcript(event, now)
@@ -684,7 +688,7 @@ class VoiceSession:
         paused_for = now - self._paused_at
         if (
             self.state == "paused" and reply is not None and paused_for >= tuning.confirm_window_s
-            and (not self.you.heard_within(now, tuning.vad_silence_ms / 1000) or paused_for >= tuning.pause_cap_s)
+            and (not self.you.clear_within(now, tuning.vad_silence_ms / 1000) or paused_for >= tuning.pause_cap_s)
         ):
             reply.paused_s += now - self._paused_at
             self.state, reply.pause, reply.timing.barge_in_ms = "speaking", None, None

@@ -24,6 +24,7 @@ INITIAL_FLOOR_CAP = 250.0
 # Telling the owner's voice from the room's talkers (docs/superpowers/specs/2026-11-06-room-noise-design.md).
 # Mirrored in web/lib/voice/vad.ts, so the page and the server judge "it's you" the same way.
 ROOM_FRAMES = 400  # the last 8 s of 20 ms frames heard while Wren speaks
+ROOM_RECENT_FRAMES = 120  # and the last 2.4 s of them: new talk raises the bar within a second, two cut-ins don't
 ROOM_MIN_FRAMES = 50  # a second of them before the room's level counts
 ROOM_PERCENTILE = 0.8  # how loud the talkers get; the owner's short cut-ins stay under a fifth
 ROOM_MARGIN = 2.0  # the owner's voice must be twice as loud as the room's talkers (6 dB)
@@ -77,6 +78,11 @@ class EnergyVad:
         return None
 
 
+def _percentile(levels) -> float:
+    ordered = sorted(levels)
+    return ordered[min(len(ordered) - 1, int(len(ordered) * ROOM_PERCENTILE))]
+
+
 class RoomTalk:
     """How loud the room's talkers get: a high percentile of the levels heard while the owner is
     normally quiet (Wren speaking, or preparing its opening). The owner talks a few inches from the
@@ -97,8 +103,8 @@ class RoomTalk:
     def level(self) -> float | None:
         if len(self._levels) < ROOM_MIN_FRAMES:
             return None
-        ordered = sorted(self._levels)
-        return ordered[min(len(ordered) - 1, int(len(ordered) * ROOM_PERCENTILE))]
+        recent = list(self._levels)[-ROOM_RECENT_FRAMES:]
+        return max(_percentile(self._levels), _percentile(recent))
 
     def clearly_you(self, level: float) -> bool:
         talkers = self.level()
@@ -111,10 +117,13 @@ class ClearVoice:
 
     def __init__(self):
         self._recent: deque[tuple[float, bool, float]] = deque()
-        self.last_at: float | None = None
+        self.last_at: float | None = None  # the last time the owner's voice counted: 200 ms of it
+        self.last_clear_at: float | None = None  # the last single frame of it, gaps between words and all
 
     def push(self, clear: bool, now: float, frame_ms: float = 20.0) -> None:
         self._recent.append((now, clear, frame_ms))
+        if clear:
+            self.last_clear_at = now
         while self._recent and self._recent[0][0] <= now - CLEAR_WINDOW_MS / 1000:
             self._recent.popleft()
         if clear and sum(ms for _, voiced, ms in self._recent if voiced) >= CLEAR_START_MS:
@@ -122,3 +131,7 @@ class ClearVoice:
 
     def heard_within(self, now: float, seconds: float) -> bool:
         return self.last_at is not None and now - self.last_at <= seconds
+
+    def clear_within(self, now: float, seconds: float) -> bool:
+        """Any frame of the owner's voice this recently: still talking, between words or not."""
+        return self.last_clear_at is not None and now - self.last_clear_at <= seconds

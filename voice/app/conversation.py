@@ -18,6 +18,7 @@ from uuid import UUID
 
 from app.memory.types import PipelineEntry, Profile, SearchHit
 from app.mock import Mock
+from app.voice.vad import RoomTalk
 
 
 @dataclass(frozen=True)
@@ -67,6 +68,7 @@ class Conversation:
     mock: Mock | None = None  # the mock in progress, or the session's last one
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)  # one turn at a time, socket or HTTP
     last_active: float = field(default_factory=time.monotonic)
+    room: RoomTalk = field(default_factory=RoomTalk)  # how loud the room's talkers get: kept across reconnects
 
     @property
     def turn_mode(self) -> str:

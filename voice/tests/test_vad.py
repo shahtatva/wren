@@ -107,3 +107,19 @@ def test_heard_within():
     assert you.last_at == pytest.approx(1.0)
     assert you.heard_within(2.9, 2.0)
     assert not you.heard_within(3.1, 2.0)
+
+
+def test_the_room_level_rises_within_a_second_of_new_talk():
+    room = RoomTalk()
+    for _ in range(400):
+        room.observe(100.0)  # 8 s of a quiet room
+    for _ in range(30):
+        room.observe(3000.0)  # then people start talking nearby
+    assert room.level() == 3000.0
+
+
+def test_clear_within_counts_any_clear_frame():
+    you = ClearVoice()
+    you.push(True, 1.0)
+    assert you.last_at is None  # one frame isn't voice that counts...
+    assert you.clear_within(1.25, 0.3) and not you.clear_within(1.35, 0.3)  # ...but it's still the owner talking

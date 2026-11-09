@@ -432,7 +432,8 @@ def test_a_pause_ends_at_the_cap_even_while_voice_continues():
         session.__exit__(None, None, None)
 
 
-def test_background_words_while_wren_speaks_are_ignored():
+def test_background_words_while_wren_speaks_are_ignored(caplog):
+    caplog.set_level(logging.INFO, logger="app.voice.session")
     chat = FakeChat([OPENING, TWO_LINES, ["Sure."]], delay_before={0: 1.0})
     session, ws, wire, stt = room_session(chat, playback_grace_s=5.0)
     try:
@@ -440,6 +441,7 @@ def test_background_words_while_wren_speaks_are_ignored():
         send_audio(ws, stt, ROOM, 0.3)
         stt.emit(final("did you see the game last night", 0.1, 0.9))
         assert not [m for m in wire.quiet(0.4) if m["type"] == "interrupt"]
+        assert "ignored words while Wren spoke" in caplog.text and "game" not in caplog.text  # the live check can see misses
         ws.send_json({"type": "playback", "turn": 2, "seg": 0, "event": "end"})
         ws.send_json({"type": "playback", "turn": 2, "seg": 1, "event": "start"})
         ws.send_json({"type": "playback", "turn": 2, "seg": 1, "event": "end"})
@@ -508,6 +510,57 @@ def test_room_talk_in_the_first_seconds_doesnt_replace_the_opening():
         stt.emit(final("Heads up.", 0.1, 0.5))
         end, _ = wire.until("reply_end", turn=1, timeout=5)
         assert end["outcome"] == "complete"
+
+
+QUIET = b"\x00\x00" * 320  # 20 ms of silence
+
+
+def test_a_pause_holds_through_the_gaps_between_words():
+    chat = FakeChat([OPENING, TWO_LINES])
+    session, ws, wire, ready, stt, rt = speaking_session(chat, tuning=replace(FAST, playback_grace_s=8.0, pause_cap_s=5.0))
+    try:
+        speaking_turn_2(ws, wire)
+        ws.send_json({"type": "barge_in", "turn": 2, "seg": 0, "played_ms": 80, "onset_ms": 110})
+        for _ in range(6):  # about 2 s of talking with the usual gaps between words, before any words arrive
+            send_audio(ws, stt, LOUD, 0.2, pace=True)
+            send_audio(ws, stt, QUIET, 0.16, pace=True)
+        assert not [m for m in wire.quiet(0.05) if m["type"] == "resume"]
+        send_silence(ws, stt, 0.6)
+        wire.until("resume", turn=2, timeout=2)
+    finally:
+        session.__exit__(None, None, None)
+
+
+def test_a_reconnect_keeps_what_the_room_sounded_like():
+    connections: list[FakeStt] = []
+
+    async def connect():
+        connections.append(FakeStt())
+        return connections[-1]
+
+    runtime = make_runtime(FakeChat([OPENING, ["Sure, let's start."]], delay_before={0: 1.0, 1: 1.0}), stt_factory=connect)
+    with voice_session(runtime) as (ws, wire, ready):
+        send_audio(ws, connections[0], ROOM, 3.2)  # people talking nearby while the opening is prepared
+        send_silence(ws, connections[0], 0.4)
+        play(ws, wire, turn=1)
+        session_id = ready["session_id"]
+    with voice_session(runtime, session_id=session_id) as (ws, wire, ready):
+        assert ready["resumed"] is True
+        ws.send_json({"type": "user_text", "text": "Talk to me"})
+        send_audio(ws, connections[1], ROOM, 0.6)  # the same people, still talking
+        end, _ = wire.until("reply_end", timeout=5)  # a new socket counts turns from 1
+        assert end["outcome"] == "complete"
+
+
+def test_a_crisis_over_wren_interrupts_without_a_page_pause():
+    chat = FakeChat([OPENING, TWO_LINES, ["I'm here with you."]], delay_before={0: 1.0})
+    session, ws, wire, stt = room_session(chat, playback_grace_s=5.0)
+    try:
+        speaking_turn_2(ws, wire)
+        stt.emit(final("I want to end my life.", 0.1, 0.9))  # the page missed them; this can't be dropped
+        wire.until("interrupt", turn=2, timeout=2)
+    finally:
+        session.__exit__(None, None, None)
 
 
 def test_a_reply_finishes_even_if_the_browser_never_reports_playback():
