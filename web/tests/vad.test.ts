@@ -113,13 +113,23 @@ test("echo that leaks back doesn't raise the bar past today's", () => {
   assert.deepEqual(feed(vad, Array(15).fill(0.1), true, 8_000), [8_180]);
 });
 
+test("talk that starts mid-session pauses Wren at most once, as it begins", () => {
+  const vad = trustedQuietRoom();
+  feed(vad, Array(250).fill(0.001), true, 0); // 8 s of a quiet room in all
+  const onsets = feed(vad, talk(4), true, 5000);
+  assert.ok(onsets.length <= 1, `paused ${onsets.length} times`);
+  assert.ok(onsets.every((at) => at < 5600), "and only as the talk began");
+});
+
 test("short overlaps don't teach it your voice", () => {
   const vad = roomOfTalkers();
   const onsets: number[] = [];
   for (let round = 0; round < 4; round++) {
     const at = 2000 + round * 2000;
     onsets.push(...feed(vad, talk(1.7), true, at));
-    onsets.push(...feed(vad, Array(15).fill(0.2), true, at + 1700)); // the owner cuts in for 0.3 s
+    // The owner cuts in for 0.3 s. Once the page pauses Wren, 0.2 s in, the rest isn't the room's.
+    onsets.push(...feed(vad, Array(10).fill(0.2), true, at + 1700));
+    onsets.push(...feed(vad, Array(5).fill(0.2), true, at + 1900, false));
   }
   assert.equal(onsets.length, 4, "every cut-in still counts");
 });

@@ -301,6 +301,7 @@ export class VoiceClient {
         this.setStatus("thinking");
         break;
       case "segment":
+        this.openingPending = false; // Wren has started talking, heard here or not
         this.emit({ type: "wren", epoch, turn: m.turn, text: m.text, role: roleOf(m) });
         break;
       case "mock":
@@ -384,10 +385,11 @@ export class VoiceClient {
       if (this.levels.length > 3000) this.levels.splice(0, 1000);
       (window as unknown as { __wrenLevels?: unknown }).__wrenLevels = this.levels;
     }
-    // Before the opening's first audio the owner is normally quiet too, so those frames teach the
-    // detector the room before Wren says a word.
+    // The room is learned while Wren talks, and before its opening, when the owner is normally quiet.
+    // Never while this page holds Wren paused: that's the owner talking.
     if (audible) this.openingPending = false;
-    const onset = this.vad.push(frame.rms, now, audible, 20, audible || this.openingPending) === "onset";
+    const roomFrame = (audible && !this.pausing) || this.openingPending;
+    const onset = this.vad.push(frame.rms, now, audible, 20, roomFrame) === "onset";
     if (onset && this.micOn && this.status === "speaking" && !this.pausing && this.player) void this.bargeIn(now);
   }
 

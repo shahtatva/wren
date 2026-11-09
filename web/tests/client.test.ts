@@ -181,6 +181,50 @@ test("room talk before and during the opening doesn't pause Wren", async () => {
   assert.equal(bargeIns(), 1, "and still stops for the owner's voice");
 });
 
+test("cutting in again and again keeps working", async () => {
+  let clock = 0;
+  swap(performance, "now", () => clock);
+  const { socket, player, hear } = await startedClient();
+  const say = (rms: number, frames: number) => {
+    for (let i = 0; i < frames; i++) {
+      clock += 20;
+      hear(rms);
+    }
+  };
+  const bargeIns = () => socket.messages().filter((message) => message.type === "barge_in").length;
+  for (let turn = 2; turn <= 5; turn++) {
+    socket.receive({ type: "user_turn", turn, text: "Go on" });
+    player.emit({ type: "segment-start", turn, seg: 0 });
+    say(0.001, turn === 2 ? 150 : 50); // Wren talks in a quiet room
+    say(0.3, 60); // the owner cuts in and keeps talking until the server confirms
+    await settle();
+    socket.receive({ type: "interrupt", turn });
+    assert.equal(bargeIns(), turn - 1, `cut-in ${turn - 1} paused Wren`);
+  }
+});
+
+test("a mic that starts after the opening doesn't take the owner's first turn for the room", async () => {
+  let clock = 0;
+  swap(performance, "now", () => clock);
+  const { socket, player, hear } = await startedClient();
+  const say = (rms: number, frames: number) => {
+    for (let i = 0; i < frames; i++) {
+      clock += 20;
+      hear(rms);
+    }
+  };
+  player.audible = false;
+  socket.receive({ type: "segment", turn: 1, seg: 0, text: "Hi, I'm Wren, an AI." }); // played before the mic started
+  say(0.3, 100); // the owner's first turn
+  socket.receive({ type: "user_turn", turn: 2, text: "Sprout moved my screen" });
+  player.audible = true;
+  player.emit({ type: "segment-start", turn: 2, seg: 0 });
+  say(0.001, 150);
+  say(0.3, 15);
+  await settle();
+  assert.equal(socket.messages().filter((message) => message.type === "barge_in").length, 1);
+});
+
 test("a resume for another turn doesn't unpause Wren", async () => {
   const { socket, player, events, speakOver } = await startedClient();
   socket.receive({ type: "user_turn", turn: 2, text: "Feedback please" });

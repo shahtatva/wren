@@ -20,6 +20,7 @@ const QUIET_TO_REARM_MS = 150;
 
 // Mirrored in voice/app/voice/vad.py.
 const ROOM_FRAMES = 400; // the last 8 s of 20 ms frames heard while Wren speaks
+const ROOM_RECENT_FRAMES = 120; // and the last 2.4 s of them: new talk raises the bar within a second, two cut-ins don't
 const ROOM_MIN_FRAMES = 50; // a second of them before the room's level counts
 const ROOM_PERCENTILE = 0.8; // how loud the talkers get; the owner's short cut-ins stay under a fifth
 const ROOM_MARGIN = 2; // the owner's voice must be twice as loud as the room's talkers (6 dB)
@@ -41,9 +42,13 @@ export class RoomTalk {
 
   level(): number | null {
     if (this.levels.length < ROOM_MIN_FRAMES) return null;
-    const sorted = [...this.levels].sort((a, b) => a - b);
-    return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * ROOM_PERCENTILE))];
+    return Math.max(percentile(this.levels), percentile(this.levels.slice(-ROOM_RECENT_FRAMES)));
   }
+}
+
+function percentile(levels: number[]): number {
+  const sorted = [...levels].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * ROOM_PERCENTILE))];
 }
 
 export class Vad {
