@@ -220,12 +220,16 @@ Design: [2026-11-06-room-noise-design.md](2026-11-06-room-noise-design.md). Plan
 
 **What changed.** The owner's voice is told from the room's talkers by loudness. They talk a few inches from the phone, others a metre or more away.
 
-- **The yardstick.** The page and the server both learn how loud the room's talkers get: the 80th percentile of the last 8 s of mic levels heard while Wren talks or prepares its opening, when the owner is normally quiet. Voice counts as the owner's only when it's twice that loud (6 dB) and lasts 200 ms within 260 ms.
+- **The yardstick.** The page and the server both learn how loud the room's talkers get, from mic levels heard while Wren talks or prepares its opening, when the owner is normally quiet.
+  - It's the higher of the 80th percentile over the last 8 s and over the last 2.4 s, so new talk raises it within about a second.
+  - Frames heard while the page holds Wren paused are never learned: that's the owner talking.
+  - The server keeps it with the conversation, so a reconnect doesn't forget the room.
+  - Voice counts as the owner's only when it's twice that loud (6 dB) and lasts 200 ms within 260 ms.
 - **The page pauses Wren only for that voice,** and not before it has heard 3 s of the room.
-- **While Wren speaks, only the page's pause lets words interrupt.** Other words are ignored, and kept out of the owner's next turn.
+- **While Wren speaks, only the page's pause lets words interrupt.** Other words are ignored, kept out of the owner's next turn, and logged with a reason but never their text. A crisis mention always gets through, pause or not.
 - **While Wren prepares a reply,** voice or words cancel it only with the owner's voice within the last 2 s. A cough doesn't.
 - **The server trusts its yardstick** for moments the owner is normally quiet in only after 3 s of them.
-- **A pause holds** only while the owner's voice continues, and never past 2.5 s without words.
+- **A pause holds** only while the owner's voice continues, counting the gaps between words, and never past 2.5 s without words.
 
 **Measured in the browser, with the fake mic.** The talk is the sample time-reversed, which sounds like speech, 12 dB under the sample's voice (`session_e2e.py --chatter 12`).
 
@@ -235,11 +239,22 @@ Design: [2026-11-06-room-noise-design.md](2026-11-06-room-noise-design.md). Plan
 | A crowd | | 24 of 24 checks pass |
 | No talk (`--mode both`) | 46 of 46 | 46 of 46 |
 
+A fresh review then found five more problems, all fixed test-first:
+
+- the page learned the owner's voice from its own pauses, so two cut-ins stopped barge-in working, even in a quiet room;
+- a mic that started after the opening learned the owner's first turn as the room;
+- talk that starts mid-session paused Wren on every burst;
+- a reconnect forgot the room;
+- a pause gave up between the owner's words.
+
 **Known limits:**
 
 - **While Wren listens,** clearly spoken room words still become the owner's turn. Nova-3 even turned the reversed talk into words ("The Lord is the one in the."). Gating those on the owner's voice could leave a soft-spoken owner unheard, so it's for the owner to decide.
-- **Talk that starts after a long quiet stretch** counts as the owner's for about 1.6 s, until the 80th percentile catches up. While Wren speaks, the page's pause is the only way in, and that held in the runs above.
-- **The first 3 s or so of Wren's opening can't be interrupted by voice.**
+- **Talk that starts mid-session** can pause Wren once, as it begins, until the yardstick has about a second of it. Words heard during that pause can interrupt Wren. Unit tests cover this; no browser run starts talk mid-session.
+- **The first 3 s or so of Wren's opening can't be interrupted by voice,** and the owner's words in that time are dropped.
+- **Three cut-ins within about 2.4 s of Wren talking** can teach the page the owner's voice for a few seconds.
+- **Steady babble** needs the owner about 11 to 15 dB above it on the page, not 6, because the older floor bar wins there.
+- **Echo that rises and falls like speech** can put the page's bar above where it was. Both of these wait on the M0 echo spike.
 - **If the page misses the owner over a phone speaker,** Wren talks over them until the reply ends. The owner ranked that below pausing for the room.
 
 ## Why
@@ -475,7 +490,7 @@ The adapter emits the same events a Flux adapter would, so trying Flux later is 
   - Voice counts only if it's twice as loud as the room's talkers, learned while Wren talks ("Build notes: noisy rooms").
   - After 200 ms of that voice within 260 ms, the page pauses playback on the spot (a 10 ms fade, to avoid a click) and sends `barge_in`. That keeps onset to silence under 300 ms without a server round trip.
   - No pause comes before the page has heard 3 s of the room.
-- **Confirm with words.** The server confirms using words from Nova-3, and only during a pause the page started. Words while Wren talks with no pause are the room's, and never become a user turn.
+- **Confirm with words.** The server confirms using words from Nova-3, and only during a pause the page started. Words while Wren talks with no pause are the room's, and never become a user turn. A crisis mention is the exception: it always interrupts.
   - A transcript that mostly repeats what Wren just said counts as echo.
   - One made only of backchannels ("mm-hm", "yeah", "okay", "right") doesn't count either.
   - Both guards apply to every transcript heard while Wren talks, so echo can never become a user turn.

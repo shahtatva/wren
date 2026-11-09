@@ -68,9 +68,17 @@ The margin, the percentile and the windows are the builder's to set, from the te
 - **While Wren prepares a reply,** renewed voice or words cancel it only if the server heard clearly-you voice in the last couple of seconds. Deepgram's words lag the audio by about a second. The same rule covers words heard before the opening.
 - **Warm-up:** the page and the server judge voice against the yardstick only after hearing 3 s of the room, while Wren speaks or prepares its opening. Before that, nothing in those moments counts as the owner's voice.
 
+### Found by the final review, and fixed
+
+- **Pauses aren't room.** Frames heard while the page holds Wren paused are the owner's, so they're never learned. Before this, two cut-ins taught the page the owner's voice.
+- **The opening phase ends at Wren's first line.** If the mic starts after the opening has played, the owner's first turn isn't learned as the room.
+- **A faster rise.** The yardstick is the higher of the 80th percentile over 8 s and over the last 2.4 s, so new talk raises it within about a second. The short window is 2.4 s, not 2, so two quick cut-ins stay under the fifth the percentile ignores.
+- **It survives reconnects.** The server keeps the yardstick with the conversation.
+- **Crisis words always get through.** While Wren speaks without a page pause, a crisis mention still interrupts. CLAUDE.md says a crisis mention always routes to real resources. Other ignored words are logged with a reason, never their text.
+
 ### A pause always ends
 
-If a pause gets no confirming words within a cap, Wren resumes, even if the room is still loud. The cap is about 2.5 s: a confirmation window plus Deepgram's lag.
+If a pause gets no confirming words within a cap, Wren resumes, even if the room is still loud. The cap is about 2.5 s: a confirmation window plus Deepgram's lag. Before the cap, a pause holds while any frame of the owner's voice continues, counting the gaps between words.
 
 ### What doesn't change
 
