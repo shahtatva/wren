@@ -25,9 +25,8 @@ Built from [plans/2026-11-06-proactive-opener.md](../plans/2026-11-06-proactive-
    - pick-up: "We can pick up the consulting club story, Maya. Want to focus on ending with the result?"
    - plain: "How's the job search going, Maya?"
 5. **The hold costs little.** Across 33 openers the longest hold was 106 ms, and the median was 0 to 25 ms per round. The reply usually arrives in one burst after the model's reasoning.
-6. **Left for later.**
-   - Spec feature 6's boxes stay open until extraction runs after live sessions and gives a real account these facts.
-   - The database tests for the new reads haven't run: the dev Supabase project was refusing connections (paused) during the build. They must pass before this merges.
+6. **Left for later.** Spec feature 6's boxes stay open until extraction runs after live sessions and gives a real account these facts.
+7. **The database tests ran last.** The dev Supabase project was paused during the build, so the new reads first ran against Postgres on 2026-11-10, after the branch was rebased onto the room-noise work. All 12 database tests passed.
 
 ## Why
 
