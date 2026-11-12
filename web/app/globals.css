@@ -1,31 +1,46 @@
 @import "tailwindcss";
 
+/* Perch: apricot day, plum night (docs/superpowers/specs/2026-11-11-perch-ui-design.md, "Colors and type").
+   web/tests/tokens.test.ts checks every text color against each surface it sits on. */
 :root {
-  --background: #faf6f0;
-  --foreground: #3b2a1e;
-  --wren: #8a5a35; /* brand.accent: the talk control and Wren's presence */
-  --feather: #cdbba5; /* rules and rings, never text */
-  --brick: #9b3b2f; /* notices that need attention */
+  --background: #f9c59b;
+  --toffee: #edb283; /* alternate bands on What Wren knows */
+  --field: #fde3cc; /* inputs */
+  --foreground: #3a1f2b;
+  --ink-soft: #5b3a3c; /* secondary text */
+  --wren: #7b3a1d; /* brand.accent: the wordmark, headings, Send and Wren's song lines */
+  --feather: #c98a5e; /* rules, never text */
+  --brick: #842a1f; /* notices that need attention, and Delete */
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-toffee: var(--toffee);
+  --color-field: var(--field);
   --color-foreground: var(--foreground);
+  --color-ink-soft: var(--ink-soft);
   --color-wren: var(--wren);
   --color-feather: var(--feather);
   --color-brick: var(--brick);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-recursive);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #1c1611;
-    --foreground: #efe6da;
-    --wren: #c8925f;
-    --feather: #5e4f40;
-    --brick: #e58a73;
+    --background: #2b1e2e;
+    --toffee: #3a2838;
+    --field: #3a2a3d;
+    --foreground: #f7e3cc;
+    --ink-soft: #d9bfae;
+    --wren: #e09a6a;
+    --feather: #5e4658;
+    --brick: #f08b78;
   }
+}
+
+/* Wren's own words are set casual. Yours, and the interface, stay linear. */
+@utility casual {
+  font-variation-settings: "CASL" 1;
 }
 
 body {

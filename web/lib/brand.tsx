@@ -1,9 +1,10 @@
 export const brand = {
   name: "Wren",
   description: "A voice companion for your job search.",
-  background: "#faf6f0",
-  ink: "#3b2a1e",
-  accent: "#8a5a35",
+  background: "#f9c59b", // apricot day
+  night: "#2b1e2e", // plum night
+  ink: "#3a1f2b",
+  accent: "#7b3a1d",
 };
 
 // Placeholder mark until there is a real illustrated avatar.

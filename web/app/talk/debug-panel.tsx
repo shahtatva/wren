@@ -30,7 +30,7 @@ function clock(iso: string | null): string {
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between gap-4">
-      <dt className="text-foreground/70">{label}</dt>
+      <dt className="text-ink-soft">{label}</dt>
       <dd className="tabular-nums">{value}</dd>
     </div>
   );
@@ -54,14 +54,14 @@ export function DebugPanel({ metrics, info }: Props) {
         aria-expanded={open}
         className="flex w-full items-baseline justify-between rounded text-left focus-visible:outline-2 focus-visible:outline-wren"
       >
-        <span className="text-foreground/70">Time to first audio</span>
+        <span className="text-ink-soft">Time to first audio</span>
         <span className="text-lg font-semibold tabular-nums">{last ? ms(last.ttfa_ms) : "–"}</span>
       </button>
       {open ? (
         <div className="mt-2 space-y-3">
           {last ? (
             <>
-              <p className="text-foreground/70">
+              <p className="text-ink-soft">
                 Median {ms(typical)} over {voiced.length} {voiced.length === 1 ? "turn" : "turns"}. Target under
                 1,000.
               </p>
@@ -78,10 +78,10 @@ export function DebugPanel({ metrics, info }: Props) {
               </dl>
             </>
           ) : (
-            <p className="text-foreground/70">Say something to Wren. Each spoken turn is timed here.</p>
+            <p className="text-ink-soft">Say something to Wren. Each spoken turn is timed here.</p>
           )}
           {info ? (
-            <p className="border-t border-feather pt-2 text-foreground/70">
+            <p className="border-t border-feather pt-2 text-ink-soft">
               {info.model}. Memory {info.memory}.
             </p>
           ) : null}
