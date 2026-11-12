@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import type { CSSProperties } from "react";
 import { Bird, Perch } from "@/lib/bird";
 import type { Pose } from "@/lib/bird-state";
+import { MockTile } from "./mock-tile";
 
 // Development only: Wren in every pose on its branch, for checking the bird by eye. Speaking holds a
 // steady voice level here; on the talk page the level comes from Wren's voice.
@@ -23,6 +24,10 @@ export default function PerchPage() {
           </div>
         </section>
       ))}
+      <section aria-label="mock interview">
+        <h2 className="text-sm font-[650] text-ink-soft">mock interview</h2>
+        <MockTile />
+      </section>
     </main>
   );
 }

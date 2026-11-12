@@ -49,6 +49,7 @@ TYPED = (
 CONTEXT_WORDS = ("sprout", "monday", "screen", "phone")  # any of these: the 2nd reply used the 1st message
 MIC_DENIED = "I can't hear you. Allow the microphone in your browser, or type instead."
 AI_NOTE = "Wren is an AI, not a person."
+EMPTY_TEXT = "Tap Wren and say hi"  # the talk page before anyone has spoken
 AUDIO_BYTES_PER_S = 48000  # 24 kHz mono linear16
 SPEECH = 0.01  # mic level that counts as the sample's voice; the fake room sits near 0.0005
 
@@ -56,7 +57,7 @@ SPEECH = 0.01  # mic level that counts as the sample's voice; the fake room sits
 STATUS_TRACE = """
 window.__statusTrace = [];
 new MutationObserver(() => {
-  const el = document.querySelector('header p[aria-live]');
+  const el = document.querySelector('#voice-status');
   if (!el) return;
   const trace = window.__statusTrace;
   const text = el.textContent;
@@ -303,7 +304,7 @@ class Session:
         self.page.goto(f"{WEB}/talk?debug=1", timeout=180_000)
         self.page.wait_for_load_state("networkidle")
         self.offset_ms = self.page.evaluate("performance.now()") - time.monotonic() * 1000
-        empty = self.page.get_by_text("Tap the mic and say hi")
+        empty = self.page.get_by_text(EMPTY_TEXT)
         self.report.check("talk page loads with its empty state", empty.is_visible(), f"title {self.page.title()!r}")
 
     def await_ready(self) -> dict | None:
@@ -352,13 +353,25 @@ class Session:
             self.report.note("Wren didn't say it's an AI aloud: typing first cancels the opening line. The page note covers it.")
 
     def leave(self) -> None:
-        """End the session the way a user does: the header link back home unmounts the talk page."""
+        """End the session the way a user does: the header link back home. Next hides the talk page rather than
+        unmounting it, and hiding ends the session too."""
         self.page.get_by_role("link", name="Wren", exact=True).click()
         ended = self.wait_for(lambda: self.wire.sent_messages("end"), 45)
         closed = self.wait_for(lambda: self.wire.closed_at is not None, 15)
         self.report.check("leaving the page ends the session (end sent, socket closed)", ended and closed,
                           f"end sent: {bool(ended)}, socket closed: {closed}, now at {self.page.url}")
         self.report.check("one socket for the whole session", self.wire.sockets == 1, f"{self.wire.sockets} voice socket(s)")
+
+    def come_back(self) -> None:
+        """The browser's Back from home: the talk page Next kept hidden starts over, and a tap opens a new session."""
+        self.page.go_back()
+        fresh = self.wait_for(lambda: self.page.get_by_text(EMPTY_TEXT).is_visible(), 15)
+        self.report.check("coming back shows a fresh talk page", fresh, f"now at {self.page.url}")
+        readies = len(self.wire.messages("ready"))
+        self.page.get_by_role("button", name="Start talking").click()
+        ready = self.wait_for(lambda: len(self.wire.messages("ready")) > readies, 30)
+        self.report.check("a tap after coming back opens a new session", ready, f"{self.wire.sockets} voice socket(s) in all")
+        self.page.get_by_role("link", name="Wren", exact=True).click()
 
     def server_log(self) -> list[dict]:
         self.page.wait_for_timeout(2000)  # the server appends after each turn, off the live path
@@ -426,7 +439,7 @@ def text_session(p, args) -> Report:
             r.check(f"typed turn {i}: timing record says text input", metrics.get("input") == "text",
                     f"input {metrics.get('input')}, commit to first audio {metrics.get('turn_to_audio_ms')} ms, "
                     f"LLM first token {metrics.get('llm_ttft_ms')} ms, TTS first byte {metrics.get('tts_ttfb_ms')} ms")
-            s.wait_for(lambda: page.locator("header p[aria-live]").inner_text() == "Listening", 15)
+            s.wait_for(lambda: page.locator("#voice-status").inner_text() == "Listening", 15)
 
         hit = [w for w in CONTEXT_WORDS if w in replies[1].lower()]
         r.check("2nd reply builds on the 1st message (same-session history)", hit, f"mentions {hit}" if hit else replies[1][:120])
@@ -441,6 +454,7 @@ def text_session(p, args) -> Report:
         page.screenshot(path=str(OUT / "text-session.png"), full_page=True)
         s.leave()
         rows = s.server_log()
+        s.come_back()
         typed_rows = [row for row in rows if row["input"] == "text" and row["outcome"] == "complete"]
         r.check("server logged both typed turns as complete", len(typed_rows) == len(TYPED), f"{len(rows)} row(s) for session {s.session_id}")
     except Exception:

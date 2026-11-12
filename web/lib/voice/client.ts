@@ -53,8 +53,8 @@ export type ClientEvent =
 export const NOTICES = {
   micDenied: "I can't hear you. Allow the microphone in your browser, or type instead.",
   noVoice: "This browser can't do voice with me. You can still type.",
-  lost: "I lost the connection. Tap to reconnect, or keep typing.",
-  idle: "I paused listening. Tap the mic when you want to keep talking.",
+  lost: "I lost the connection. Tap Wren to reconnect, or keep typing.",
+  idle: "I paused listening. Tap Wren when you want to keep talking.",
   deaf: "I can't hear right now. Type instead, and I'll keep answering.",
   unreachable: "I can't reach the voice server right now. Try again in a moment.",
   signInRetrying: "I can't reach sign-in right now. I'll keep trying.",

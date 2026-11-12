@@ -5,23 +5,17 @@ import {
   useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode,
 } from "react";
 import { auth } from "@/lib/auth";
+import { birdView } from "@/lib/bird-state";
 import { VoiceClient, type ClientEvent, type VoiceStatus } from "@/lib/voice/client";
 import type { TurnMetrics } from "@/lib/voice/protocol";
 import { DebugPanel } from "./debug-panel";
 import { STEP_OUT_TEXT, TAPPED, stepOutAfter, type PendingStepOut } from "@/lib/step-out";
 import { screenAfter, type Screen, type ScreenEvent } from "@/lib/talk-screen";
 import { EMPTY_TRANSCRIPT, transcriptAfter } from "@/lib/talk-transcript";
+import { FIELD, FOCUS, PRIMARY, QUIET } from "@/lib/ui";
 import { AgeStep, SignIn } from "./sign-in";
-
-const STATUS: Record<VoiceStatus, string> = {
-  idle: "Not started",
-  connecting: "Connecting",
-  listening: "Listening",
-  thinking: "Thinking",
-  speaking: "Wren is talking",
-  paused: "Listening to you",
-  reconnecting: "Reconnecting",
-};
+import { MockBar, Stage } from "./stage";
+import { Transcript } from "./transcript";
 
 const subscribeNever = () => () => {};
 const debugInUrl = () => new URLSearchParams(window.location.search).has("debug");
@@ -42,12 +36,12 @@ function addTiming(list: Timing[], key: string, metrics: TurnMetrics): Timing[] 
 
 function Header({ children, below }: { children?: ReactNode; below?: ReactNode }) {
   return (
-    <header className="pt-5 pb-3">
-      <div className="flex items-baseline justify-between">
-        <Link href="/" className="rounded text-lg font-semibold tracking-tight focus-visible:outline-2 focus-visible:outline-wren">
+    <header className="pt-3 pb-1">
+      <div className="flex items-center justify-between gap-4">
+        <Link href="/" className={`casual inline-flex min-h-11 items-center rounded text-[26px] font-extrabold tracking-tight text-wren ${FOCUS}`}>
           Wren
         </Link>
-        <div className="flex items-baseline gap-4">{children}</div>
+        <div className="flex items-center gap-4">{children}</div>
       </div>
       {below}
     </header>
@@ -56,58 +50,14 @@ function Header({ children, below }: { children?: ReactNode; below?: ReactNode }
 
 function HeaderButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="rounded text-sm text-foreground/70 underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-wren"
-    >
+    <button type="button" onClick={onClick} className={`${QUIET} text-[15px]`}>
       {label}
     </button>
   );
 }
 
-// While an interviewer has the floor: say so, and keep one tap to step out in reach. It sits on its
-// own row, because the status and sign-out already fill the first one on a phone. Step out is the one
-// control in role, so its text is at full strength, and its padding gives it a 36px tap target that
-// the negative margin keeps from moving the row.
-function MockBar({ onStepOut }: { onStepOut: () => void }) {
-  const stepOut = useRef<HTMLButtonElement>(null);
-  // The bar leaves with the interview, and its button with it. If the button had focus, the message box
-  // takes it, so the keyboard isn't dropped back at the top of the page. A layout effect's cleanup runs
-  // while the button is still on the page.
-  useLayoutEffect(() => {
-    const button = stepOut.current;
-    return () => {
-      if (button !== null && document.activeElement === button) document.getElementById("message")?.focus();
-    };
-  }, []);
-  return (
-    <div className="flex items-baseline justify-between pt-2">
-      <p className="text-sm font-medium">Mock interview</p>
-      <button
-        ref={stepOut}
-        type="button"
-        onClick={onStepOut}
-        className="-my-2 rounded py-2 text-sm text-foreground underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-wren"
-      >
-        Step out
-      </button>
-    </div>
-  );
-}
-
 // Always on screen, so a session that starts by typing is disclosed too (wren-voice boundary 2).
-const AI_NOTE = <p className="mt-3 text-sm text-foreground/70">Wren is an AI, not a person.</p>;
-
-function MicGlyph({ muted }: { muted: boolean }) {
-  return (
-    <svg viewBox="0 0 24 24" className="size-9" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
-      <rect x="9" y="3" width="6" height="11" rx="3" />
-      <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" strokeLinecap="round" />
-      {muted ? <path d="M4 4l16 16" strokeLinecap="round" /> : null}
-    </svg>
-  );
-}
+const AI_NOTE = <p className="mt-3 text-center text-[13px] text-ink-soft">Wren is an AI, not a person.</p>;
 
 export function Talk() {
   const [status, setStatus] = useState<VoiceStatus>("idle");
@@ -129,11 +79,29 @@ export function Talk() {
   const signedIn = signedInNow ?? session === "yes";
 
   const client = useRef<VoiceClient | null>(null);
-  const ring = useRef<HTMLSpanElement>(null);
+  const level = useRef<HTMLDivElement>(null); // the stage, which carries Wren's voice level to the beak
   const bottom = useRef<HTMLDivElement>(null);
   const stepOut = useRef<PendingStepOut>(null); // a Step out tap the server hasn't answered yet
 
-  useEffect(() => () => client.current?.stop(), []);
+  // Next keeps this page hidden, not unmounted, when the user goes elsewhere (cacheComponents; see
+  // node_modules/next/dist/docs/01-app/02-guides/preserving-ui-state.md). Hiding runs this cleanup, and it
+  // starts the page over as an unmount would. Without it the ref keeps a stopped client, so after coming
+  // back from What Wren knows the next tap would do nothing.
+  useLayoutEffect(
+    () => () => {
+      client.current?.stop();
+      client.current = null;
+      stepOut.current = null;
+      dispatch({ type: "clear" });
+      setCaption("");
+      setNotice(null);
+      setTimings([]);
+      setInfo(null);
+      setHearing(false);
+      setMicOn(true);
+    },
+    [],
+  );
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: "end" });
   }, [lines, caption]);
@@ -196,9 +164,9 @@ export function Talk() {
     }
   }, [go]);
 
-  // Wren's voice level drives the ring directly, about 23 times a second, without re-rendering.
+  // Wren's voice level moves the bird's beak directly, about 23 times a second, without re-rendering.
   const onLevel = useCallback((rms: number) => {
-    ring.current?.style.setProperty("--level", Math.min(1, rms * 5).toFixed(3));
+    level.current?.style.setProperty("--level", Math.min(1, rms * 5).toFixed(3));
   }, []);
 
   const begin = useCallback(async () => {
@@ -275,7 +243,7 @@ export function Talk() {
         <Header>{screen === "age" && signedIn ? <HeaderButton label="Sign out" onClick={onSignOut} /> : null}</Header>
         <section className="flex-1 overflow-y-auto pt-[18vh] pb-4">
           {notice && screen === "sign-in" ? (
-            <p role="status" className="pb-4 text-sm text-brick">
+            <p role="status" className="pb-4 text-[15px] text-brick">
               {notice}
             </p>
           ) : null}
@@ -290,26 +258,11 @@ export function Talk() {
     );
   }
 
-  const started = status !== "idle";
-  const muted = started && !micOn;
-  const ringStyle =
-    status === "listening" && micOn
-      ? "wren-breathe border-2"
-      : status === "speaking"
-        ? "transition-[border-width] duration-75"
-        : status === "paused"
-          ? "border-2 border-dashed"
-          : status === "reconnecting"
-            ? "border-2 border-dotted opacity-60"
-            : "border-0";
-  const speakingWidth = status === "speaking" ? { borderWidth: "calc(2px + var(--level, 0) * 12px)" } : undefined;
+  const view = birdView({ status, micOn, hearing, mock: mock.on });
 
   return (
     <main className="mx-auto flex h-dvh w-full max-w-[40rem] flex-col px-5">
-      <Header below={mock.on ? <MockBar onStepOut={onStepOut} /> : null}>
-        <p aria-live="polite" className="text-sm text-foreground/70">
-          {muted ? "Muted" : STATUS[status]}
-        </p>
+      <Header below={mock.on ? <MockBar name={mock.name} onStepOut={onStepOut} /> : null}>
         {signedIn ? (
           <HeaderButton label="Sign out" onClick={onSignOut} />
         ) : (
@@ -317,80 +270,33 @@ export function Talk() {
         )}
       </Header>
 
-      <section aria-label="Conversation" className="flex-1 overflow-y-auto py-4">
-        {lines.length === 0 && !caption ? (
-          <p className="max-w-[32ch] pt-[18vh] text-xl leading-snug text-foreground/70">
-            Tap the mic and say hi. I&apos;ll listen, and you can cut in whenever you like.
-          </p>
-        ) : (
-          <ol className="space-y-3">
-            {lines.map((line) => (
-              <li key={line.key} className="grid grid-cols-[3rem_1fr] gap-x-3">
-                <span className="pt-0.5 text-sm text-foreground/70">{line.label}</span>
-                <p className={line.cut ? "leading-relaxed text-foreground/70" : "leading-relaxed"}>
-                  {line.text}
-                  {line.cut ? <span className="sr-only"> (you cut in here)</span> : null}
-                </p>
-              </li>
-            ))}
-            {caption ? (
-              <li className="grid grid-cols-[3rem_1fr] gap-x-3">
-                <span className="pt-0.5 text-sm text-foreground/70">You</span>
-                <p className="leading-relaxed text-foreground/70">{caption}</p>
-              </li>
-            ) : null}
-          </ol>
-        )}
-        <div ref={bottom} />
-      </section>
+      <Transcript lines={lines} caption={caption} bottomRef={bottom} />
+
+      <Stage view={view} mock={mock.on} onTalk={onTalk} levelRef={level} />
 
       {notice ? (
-        <p role="status" className="pb-2 text-sm text-brick">
+        <p role="status" className="pt-2 text-center text-[15px] text-brick">
           {notice}
         </p>
       ) : null}
 
-      <footer className="border-t border-feather pt-4 pb-5">
-        <div className="flex items-center gap-5">
-          <button
-            type="button"
-            onClick={onTalk}
-            aria-label={!started ? "Start talking" : status === "reconnecting" ? "Reconnect" : muted || !hearing ? "Turn the mic on" : "Mute"}
-            className={`relative grid size-20 shrink-0 place-items-center rounded-full text-background transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-wren ${muted ? "bg-foreground/40" : "bg-wren"}`}
-          >
-            <span
-              ref={ring}
-              aria-hidden
-              style={speakingWidth}
-              className={`pointer-events-none absolute -inset-2 rounded-full border-wren ${ringStyle}`}
-            />
-            {status === "thinking" ? (
-              <span aria-hidden className="wren-orbit pointer-events-none absolute -inset-3">
-                <span className="absolute top-0 left-1/2 size-2 -translate-x-1/2 rounded-full bg-wren" />
-              </span>
-            ) : null}
-            <MicGlyph muted={muted} />
+      <footer className="pt-3 pb-4">
+        <form onSubmit={onSend} className="flex gap-2">
+          <label htmlFor="message" className="sr-only">
+            Message
+          </label>
+          <input
+            id="message"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder="Or type here"
+            autoComplete="off"
+            className={FIELD}
+          />
+          <button type="submit" className={PRIMARY}>
+            Send
           </button>
-          <form onSubmit={onSend} className="flex min-w-0 flex-1 gap-2">
-            <label htmlFor="message" className="sr-only">
-              Message
-            </label>
-            <input
-              id="message"
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder="Or type here"
-              autoComplete="off"
-              className="min-w-0 flex-1 rounded-md border border-feather bg-transparent px-3 py-2 placeholder:text-foreground/50 focus-visible:outline-2 focus-visible:outline-wren"
-            />
-            <button
-              type="submit"
-              className="rounded-md px-3 py-2 font-medium text-wren hover:bg-wren/10 focus-visible:outline-2 focus-visible:outline-wren"
-            >
-              Send
-            </button>
-          </form>
-        </div>
+        </form>
         {AI_NOTE}
       </footer>
 

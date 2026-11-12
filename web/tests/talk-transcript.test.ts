@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   EMPTY_TRANSCRIPT,
+  leadKey,
   lineKey,
   speakerLabel,
   transcriptAfter,
@@ -136,4 +137,12 @@ test("clearing empties the conversation and the mock", () => {
 test("events that change nothing hand back the same transcript, so the page doesn't re-render", () => {
   assert.equal(transcriptAfter(EMPTY_TRANSCRIPT, ready), EMPTY_TRANSCRIPT);
   assert.equal(transcriptAfter(EMPTY_TRANSCRIPT, { type: "ended" }), EMPTY_TRANSCRIPT);
+});
+
+test("the lead line is the newest line that isn't the user's", () => {
+  assert.equal(leadKey([]), null);
+  assert.equal(leadKey(replay([user(1, 1, "Hi")]).lines), null);
+  assert.equal(leadKey(replay([wren(1, 1, "Hey."), user(1, 2, "Friday.")]).lines), lineKey("wren", 1, 1));
+  assert.equal(leadKey(replay([wren(1, 1, "Hey."), user(1, 2, "So"), wren(1, 2, "Go on.")]).lines), lineKey("wren", 1, 2));
+  assert.equal(leadKey(replay([wren(1, 1, "Ready?"), interviewer(1, 2, "Tell me about yourself.")]).lines), lineKey("interviewer", 1, 2));
 });

@@ -80,3 +80,11 @@ export function transcriptAfter(t: Transcript, action: TranscriptAction): Transc
       return EMPTY_TRANSCRIPT;
   }
 }
+
+/** The newest line that isn't the user's: Wren's latest words, or the interviewer's, which the page shows large. */
+export function leadKey(lines: Line[]): string | null {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (lines[i].speaker !== "user") return lines[i].key;
+  }
+  return null;
+}

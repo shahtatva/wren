@@ -72,40 +72,6 @@ body {
   font-family: var(--font-sans), system-ui, sans-serif;
 }
 
-/* The talk control: it breathes while Wren listens, and a dot circles it while Wren thinks. */
-@keyframes wren-breathe {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 0.55;
-  }
-  50% {
-    transform: scale(1.08);
-    opacity: 1;
-  }
-}
-
-@keyframes wren-orbit {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.wren-breathe {
-  animation: wren-breathe 2.6s ease-in-out infinite;
-}
-
-.wren-orbit {
-  animation: wren-orbit 1.2s linear infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .wren-breathe,
-  .wren-orbit {
-    animation: none;
-  }
-}
-
 /* Wren on its branch (lib/bird.tsx). Its posture shows what Wren is doing; the poses are the design
    canvas's, row A. In the components layer, so a utility such as h-[200px] can still size a perch. */
 @layer components {
