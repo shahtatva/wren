@@ -42,14 +42,15 @@ class MemoryEdit(BaseModel):
 
 
 class InterviewEdit(BaseModel):
-    """Every field the page can correct. A blank role or note means there isn't one."""
+    """Every field the page can correct, each one required (null where it allows), because the row is
+    rewritten whole: a field left out would otherwise wipe it. A blank role or note means there isn't one."""
 
     company: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
-    role: Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)] | None = None
+    role: Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)] | None
     stage: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
-    next_date: date | None = None
-    next_time: time | None = None
-    notes: Annotated[str, StringConstraints(strip_whitespace=True, max_length=1000)] | None = None
+    next_date: date | None
+    next_time: time | None
+    notes: Annotated[str, StringConstraints(strip_whitespace=True, max_length=1000)] | None
 
     @field_validator("role", "notes")
     @classmethod
@@ -151,7 +152,7 @@ async def _answer(request: Request, name: str, work, *, write: bool = True) -> R
         return _refuse(404, "not_found", NOT_FOUND)
     if result is True:
         return Response(status_code=204)
-    return JSONResponse(result)
+    return JSONResponse(result, headers={"Cache-Control": "no-store"})  # what Wren knows stays off the browser's disk
 
 
 @router.get("")

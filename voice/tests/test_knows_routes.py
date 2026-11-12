@@ -233,3 +233,18 @@ def test_what_the_owner_wrote_never_reaches_the_logs(caplog):
         server.call("PATCH", f"/knows/memories/{MEMORY.id}", {"text": "secret sprout story"})
         server.call("PATCH", "/knows/profile", {"summary": "secret summary"})
     assert "secret" not in caplog.text
+
+
+@pytest.mark.parametrize("method, path, body", [("GET", "/knows", None), ("PATCH", f"/knows/memories/{MEMORY.id}", {"text": "New."})])
+def test_what_wren_knows_is_never_kept_by_the_browser(method, path, body):
+    with serve() as server:
+        response = server.call(method, path, body)
+    assert response.status_code == 200 and response.headers.get("cache-control") == "no-store"
+
+
+@pytest.mark.parametrize("missing", ["role", "next_date", "next_time", "notes"])
+def test_an_interview_edit_must_send_every_field_so_none_is_wiped_by_omission(missing):
+    body = {key: value for key, value in INTERVIEW_BODY.items() if key != missing}
+    with serve() as server:
+        response = server.call("PATCH", f"/knows/pipeline/{INTERVIEW.id}", body)
+    assert response.status_code == 422 and server.memory.calls == []
