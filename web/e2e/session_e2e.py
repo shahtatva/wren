@@ -50,6 +50,7 @@ CONTEXT_WORDS = ("sprout", "monday", "screen", "phone")  # any of these: the 2nd
 MIC_DENIED = "I can't hear you. Allow the microphone in your browser, or type instead."
 AI_NOTE = "Wren is an AI, not a person."
 EMPTY_TEXT = "Tap Wren and say hi"  # the talk page before anyone has spoken
+ICONS = ("/icon/192", "/icon/512", "/apple-icon")  # drawn per request in dev, so a drawing error shows only here
 AUDIO_BYTES_PER_S = 48000  # 24 kHz mono linear16
 SPEECH = 0.01  # mic level that counts as the sample's voice; the fake room sits near 0.0005
 
@@ -307,6 +308,18 @@ class Session:
         empty = self.page.get_by_text(EMPTY_TEXT)
         self.report.check("talk page loads with its empty state", empty.is_visible(), f"title {self.page.title()!r}")
 
+    def icons_render(self) -> None:
+        bad = []
+        for path in ICONS:
+            try:
+                response = self.page.request.get(f"{WEB}{path}")
+            except Exception as e:  # the dev server can drop the request when drawing fails
+                bad.append(f"{path}: {str(e).splitlines()[0]}")
+                continue
+            if response.status != 200 or response.headers.get("content-type") != "image/png":
+                bad.append(f"{path}: {response.status}")
+        self.report.check("the app icons render", not bad, "; ".join(bad) or ", ".join(ICONS))
+
     def await_ready(self) -> dict | None:
         ready = self.wait_for(lambda: self.wire.messages("ready"), 30)
         detail = summarize(ready[0]) if ready else "no ready message"
@@ -409,6 +422,7 @@ def text_session(p, args) -> Report:
     r, wire, page = s.report, s.wire, s.page
     try:
         s.open_talk()
+        s.icons_render()
         replies: list[str] = []
         for i, typed in enumerate(TYPED, 1):
             page.get_by_label("Message").fill(typed)

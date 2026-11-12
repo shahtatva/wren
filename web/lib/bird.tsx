@@ -21,7 +21,8 @@ export const BIRD_DAY: BirdPaint = {
 
 // One drawing for both: in the app each part gets its class, and CSS colors and poses it. With `paint`
 // (the icon), colors are attributes, and what only a pose shows (shut eye, song lines, sound arcs) is left out.
-function Parts({ paint }: { paint?: BirdPaint }) {
+// A plain function, not a component: the icon's renderer (Satori) takes only svg elements inside an <svg>.
+function parts(paint?: BirdPaint) {
   const group = (className: string) => (paint ? {} : { className });
   const fill = (className: string, color: keyof BirdPaint) => (paint ? { fill: paint[color] } : { className });
   const line = (className: string, color: keyof BirdPaint, width: number) =>
@@ -80,7 +81,7 @@ export function Bird({ pose, className, paint, width }: { pose?: Pose; className
       data-pose={pose}
       {...size}
     >
-      <Parts paint={paint} />
+      {parts(paint)}
     </svg>
   );
 }
