@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { KnownInterview, Knows } from "../lib/knows-api.ts";
 import {
-  SECTIONS, counts, interviewLine, interviewTitle, memoriesIn, movedFrom, nothingSaved, orderInterviews, parseRoles, profileRows, sourceLabel,
+  SECTIONS, counts, interviewLine, interviewTitle, memoriesIn, movedFrom, nothingSaved, orderInterviews, parseRoles, profileRows, rolesFit, sourceLabel,
   todayIn, whenLabel,
 } from "../lib/knows-view.ts";
 
@@ -108,4 +108,13 @@ test("a later change that keeps the date doesn't hide where the interview moved 
     { next_date: "2026-11-12", next_time: "14:00" },
   ]);
   assert.equal(movedFrom(moved), "Thu, Nov 12 at 2:00 PM");
+});
+
+test("roles fit what the server takes: at most 10, each at most 100 characters", () => {
+  const roles = (n: number) => Array.from({ length: n }, (_, i) => `role ${i}`).join(", ");
+  assert.equal(rolesFit("BDR, analyst"), true);
+  assert.equal(rolesFit(roles(10)), true);
+  assert.equal(rolesFit(roles(11)), false);
+  assert.equal(rolesFit("x".repeat(100)), true);
+  assert.equal(rolesFit("x".repeat(101)), false);
 });

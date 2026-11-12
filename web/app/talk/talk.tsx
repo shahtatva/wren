@@ -263,6 +263,9 @@ export function Talk() {
   return (
     <main className="mx-auto flex h-dvh w-full max-w-[40rem] flex-col px-5">
       <Header below={mock.on ? <MockBar name={mock.name} onStepOut={onStepOut} /> : null}>
+        <Link href="/knows" className={`inline-flex min-h-11 items-center rounded text-[15px] underline-offset-4 hover:underline ${FOCUS}`}>
+          What Wren knows
+        </Link>
         {signedIn ? (
           <HeaderButton label="Sign out" onClick={onSignOut} />
         ) : (

@@ -33,7 +33,7 @@ export const COPY = {
   askMemory: "Delete this memory? Wren won't use it again.",
   askInterview: "Delete this interview? Wren won't bring it up again.",
   askClear: "Clear this? Wren won't use it again.",
-  rolesHelp: "Separate roles with commas.",
+  rolesHelp: "Separate roles with commas. Up to 10.",
   end: "That's everything Wren remembers.",
 } as const;
 
@@ -132,6 +132,13 @@ export function counts(knows: Knows): Record<SectionId, number> {
 /** Whether the not-saving-yet line shows: only with no memories and no interviews, so it's never wrong beside real ones. */
 export function nothingSaved(knows: Knows): boolean {
   return knows.pipeline.length === 0 && knows.memories.length === 0;
+}
+
+/** Whether typed roles fit what the voice server takes (at most 10, each at most 100 characters), so Save
+ * can stop an edit that would only ever fail. */
+export function rolesFit(text: string): boolean {
+  const roles = parseRoles(text);
+  return roles.length <= 10 && roles.every((role) => role.length <= 100);
 }
 
 /** Roles typed as one line, split on commas, without blanks or repeats (in any case). */

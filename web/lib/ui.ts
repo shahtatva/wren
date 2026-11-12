@@ -11,6 +11,11 @@ export const PRIMARY = `inline-flex h-12 items-center justify-center rounded-ful
 
 export const OUTLINE = `inline-flex min-h-11 items-center justify-center rounded-full border-2 border-ink-soft px-[18px] text-foreground disabled:opacity-60 ${FOCUS}`;
 
-export const QUIET = `inline-flex min-h-11 items-center rounded px-1 font-[650] text-wren underline underline-offset-4 disabled:opacity-60 ${FOCUS}`;
+const QUIET_BASE = `inline-flex min-h-11 items-center rounded px-1 font-[650] underline underline-offset-4 disabled:opacity-60 ${FOCUS}`;
+
+export const QUIET = `${QUIET_BASE} text-wren`;
+
+// The quiet button that starts a delete or a clear. The confirm step that follows uses DANGER.
+export const QUIET_DANGER = `${QUIET_BASE} text-brick`;
 
 export const DANGER = `inline-flex min-h-11 items-center justify-center rounded-full bg-brick px-5 font-[650] text-background disabled:opacity-60 ${FOCUS}`;
