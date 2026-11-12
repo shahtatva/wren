@@ -2,6 +2,39 @@
 
 Design, 2026-11-11 · For [spec.md](../../spec.md) features 1 (voice), 2 (mock interviews) and 5 ("What Wren knows") · Direction boards: [Wren design directions](https://claude.ai/artifact/1GQHZqjFSmX9z2dNvciGwP), row A · Rules: [CLAUDE.md](../../../CLAUDE.md)
 
+## Build notes (2026-11-12)
+
+Built from [plans/2026-11-11-perch-ui.md](../plans/2026-11-11-perch-ui.md) in eight tasks on branch `perch-ui`, with a fresh review after Task 4 and again after Task 8. The ledger of every call made along the way is kept locally in `logs/perch-ui/`, which git ignores.
+
+1. **What shipped.**
+   - Perch's colors and type on every screen: apricot day and plum night, with Wren's words in Recursive's casual style. The bird is drawn once, in `web/lib/bird.tsx`, for the home page, `/talk`, `/knows` and the app icon.
+   - `/talk`: the bird on its branch is the talk button, and `birdView()` picks its pose, status line, label and hint. The newest line that isn't yours leads, large. A mock interview gets the mock bar, with Step out, and a round mic button.
+   - `/knows`: six sections with their counts; Edit, Delete and Clear on every item; "Moved from" on rescheduled interviews; and the not-saving-yet line while nothing is saved. Signed-out, refused and failed loads each say what to do next.
+   - `voice/`: six routes in `voice/app/knows_routes.py` and their store functions. A delete removes the item's older versions in the same statement, and a memory edit embeds the new text before it saves.
+2. **Checks.**
+   - voice `pytest`: 788 passed and 24 skipped (the database tests, which run on their own). `WREN_DB_TESTS=1 pytest tests/test_store_db.py`: 24 passed.
+   - evals `pytest evals/tests`: 56 passed.
+   - web `npm test`: 130 of 130. Lint and build are clean.
+   - Leak check: 760 files in `web/.next` (leaving out `cache/`), and none of the five keys.
+   - e2e, with memory off (a throwaway dev user): `session_e2e.py --mode both` passed 48 of 49 checks, including the new icon check and both come-back checks. `voice_e2e.py` passed 6 of 7. Both misses are in item 4.
+   - Look, at 390 × 844 and 375 × 667 in light and dark: every screen fits with no sideways scroll, including a 1,000-character memory, a 60-letter company name and a long interviewer name. The input stays in view on the short phone, and the bird's feet sit on the branch. `/knows` ran on the production build with fixture answers, so nothing real was written. `/dev/perch` and a `/talk` reply ran on the dev servers. With reduced motion the listening head stops, and every pose still looks different.
+   - Keyboard: on `/talk`, Tab goes wordmark, What Wren knows, Sign out, Wren, message, Send, each with a visible ring, and Enter or Space on Wren starts a session. On `/knows`, Tab goes Back to talk, the six jump links, then each Edit. Save returns focus to that Edit. Delete asks with focus on the question, then lands on the section's heading.
+   - Live and read-only: the owner's `/knows`, with memory on through the dev identity, shows About you with the time zone (America/Chicago), every other section empty, and the not-saving-yet line. It sent no writes.
+3. **Where the build differs from this doc.**
+   - **In a mock, the hint names the mic**, since the bird isn't the button there: "Tap the mic to start", "Tap the mic to turn it on", and so on.
+   - **The talk page starts over when you come back.** Next keeps a page you leave hidden instead of unmounting it, so `/talk` came back with the old conversation and a stopped connection, and a tap did nothing. Hiding it now stops the connection and clears the conversation, and the next tap opens a new session. The e2e checks Back from home, and the look run checks What Wren knows, then Back to talk.
+   - **The page's limits match the server's.** Each field stops at the server's length, and Save stays off past 10 roles or a role over 100 characters. Roles show "Separate roles with commas. Up to 10."
+   - **An interview edit sends every field.** Role, date, time and notes can be empty but not left out, so an edit can't wipe a field by omission. Every `/knows` answer says `Cache-Control: no-store`, so the browser doesn't keep what Wren knows on disk.
+   - **The not-saving-yet line** works as builder's call 8 says: it shows only while there are no memories and no interviews.
+4. **Found in the last checks.**
+   - **The app icon didn't render outside the build.** Satori, which draws it, takes only svg elements inside an `<svg>`, and the bird nested a component there. The build still prerendered both PNGs, so it showed only in dev, where every page logged a 500. The bird's parts are now a plain function, and the e2e checks that the icons render.
+   - **`voice_e2e.py`'s barge-in check fails here and on master.** While Wren answered, the page heard the test's interruption at about 0.1 on its level meter, against 0.3 to 0.7 for the question, and never paused. The test predates the room-noise fix, which changed when the page counts a voice as yours. That's the likely cause, not yet checked. This branch changes no barge-in code. One run here passed, because the question itself cut into Wren's opening line.
+   - **`session_e2e.py`'s "heard the sample when expected" fails here and on master.** The page's level trace first shows sustained voice 17.3 to 17.6 s after the click, outside the check's window of 14.7 ± 2 s, with or without Chrome's audio processing. Master reads 17.5 s. The server commits the turn on time in every run, and this branch changes no audio code.
+5. **Known limits.**
+   - **`/knows` shares the live path's database connection.** `PostgresMemory` runs one operation at a time on one connection, so a `/knows` read waits while a turn on another device reads memory. Leaving `/talk` ends its session, so on one device the two don't overlap.
+   - The minors the reviews deferred are listed in the ledger.
+6. **Left for later.** Spec feature 5's boxes stay open until the owner's live check on the phone: `/talk` in each state, and `/knows` with an About you round trip.
+
 ## Why
 
 The owner asked for three designs, mobile-first: the conversation screen, the "What Wren knows" page (memories grouped by kind, each editable and deletable, showing which session it came from), and Wren's states (listening, thinking, speaking). The brief: "Warm and a little playful, never a SaaS dashboard."
