@@ -21,19 +21,26 @@ from app.memory.store import (
     append_turns,
     confirm_age,
     as_user,
+    delete_interview,
+    delete_memory,
     end_session,
     hybrid_search_many,
     insert_memories,
+    load_knows,
     load_profile,
     load_transcript,
+    mark_superseded,
     pipeline_between,
     previous_session,
     recent_feedback,
     schema_ready,
     start_session,
+    update_interview,
+    update_memory_text,
+    update_profile,
     user_exists,
 )
-from app.memory.types import ExtractedMemory, FeedbackNote, Profile
+from app.memory.types import ExtractedMemory, FeedbackNote, InterviewFields, KnownMemory, Knows, Profile, Source
 from app.voice.tuning import Tuning
 
 pytestmark = pytest.mark.skipif(os.environ.get("WREN_DB_TESTS") != "1", reason="set WREN_DB_TESTS=1 to run database tests")
@@ -252,3 +259,164 @@ def test_age_confirmation_round_trip_as_user(db):
         conn.execute("insert into public.profiles (user_id, timezone) values (%s, 'Europe/London')", (b,))
         confirm_age(conn, b, first, "America/Chicago")
         assert age_confirmed(conn, b) is True and load_profile(conn, b).timezone == "Europe/London"
+
+
+def _mock_session(conn, user, day):
+    query = "insert into public.sessions (user_id, mode, started_at) values (%s, 'mock', %s) returning id"
+    return conn.execute(query, (user, datetime(2026, 10, day, 18, tzinfo=UTC))).fetchone()[0]
+
+
+def _interview(conn, user, day, *, session=None):
+    query = (
+        "insert into public.pipeline (user_id, company, role, stage, next_date, next_time, source_session) "
+        "values (%s, 'Sprout Social', 'BDR', 'recruiter screen', %s, '14:00', %s) returning id"
+    )
+    return conn.execute(query, (user, date(2026, 11, day), session)).fetchone()[0]
+
+
+def _count(conn, table, user):
+    return conn.execute(f"select count(*) from public.{table} where user_id = %s", (user,)).fetchone()[0]
+
+
+def test_knows_lists_current_memories_newest_first_with_their_sources(db):
+    conn, a, _ = db
+    checkin, mock = _session(conn, a, 8), _mock_session(conn, a, 12)
+    story = _memory(conn, a, checkin, "The user cut weekly reporting from two days to four hours.", kind="story")
+    feedback = _memory(conn, a, mock, "The user ends the consulting story on the result.")
+    old = _memory(conn, a, mock, "The user rambles in the consulting story.")
+    mark_superseded(conn, old, feedback)
+    vibe = _memory(conn, a, checkin, "The user felt good after the Brightline call.", kind="vibe")
+    conn.execute("update public.memories set source_session = null where id = %s", (vibe,))
+    saved = conn.execute("select created_at from public.memories where id = %s", (vibe,)).fetchone()[0]
+    with as_user(conn, a):
+        knows = load_knows(conn, a)
+    assert [m.id for m in knows.memories] == [str(vibe), str(feedback), str(story)]  # a row with no session dates from when it was saved
+    assert [m.source for m in knows.memories] == [
+        Source(None, saved),
+        Source("mock", datetime(2026, 10, 12, 18, tzinfo=UTC)),
+        Source("checkin", datetime(2026, 10, 8, 18, tzinfo=UTC)),
+    ]
+
+
+def test_knows_lists_each_interview_once_with_its_older_dates_newest_first(db):
+    conn, a, _ = db
+    checkin = _session(conn, a, 10)
+    first, second, current = _interview(conn, a, 12), _interview(conn, a, 13), _interview(conn, a, 14, session=checkin)
+    conn.execute("update public.pipeline set superseded_by = %s where id = %s", (second, first))
+    conn.execute("update public.pipeline set superseded_by = %s where id = %s", (current, second))
+    with as_user(conn, a):
+        (interview,) = load_knows(conn, a).pipeline
+    assert interview.id == str(current)
+    assert interview.fields == InterviewFields("Sprout Social", "BDR", "recruiter screen", date(2026, 11, 14), time(14, 0), None)
+    assert interview.source == Source("checkin", datetime(2026, 10, 10, 18, tzinfo=UTC))
+    assert interview.moved_from == ((date(2026, 11, 13), time(14, 0)), (date(2026, 11, 12), time(14, 0)))
+
+
+def test_knows_without_a_profile_is_in_utc(db):
+    conn, a, _ = db
+    with as_user(conn, a):
+        assert load_knows(conn, a) == Knows("UTC", None, (), ())
+
+
+def test_editing_a_memory_changes_its_text_embedding_and_search_terms_only(db):
+    conn, a, _ = db
+    mid = _memory(conn, a, _session(conn, a, 8), "The user rambles about Sprout.")
+    with as_user(conn, a):
+        edited = update_memory_text(conn, a, mid, "The user opens with Brightline's product.", vector(99))
+    kind, importance, entities, found, embedding = conn.execute(
+        "select kind, importance, entities, tsv @@ plainto_tsquery('english', 'brightline'), embedding::text "
+        "from public.memories where id = %s", (mid,),
+    ).fetchone()
+    assert edited == KnownMemory(
+        str(mid), "feedback", "The user opens with Brightline's product.", Source("checkin", datetime(2026, 10, 8, 18, tzinfo=UTC))
+    )
+    assert (kind, importance, entities, found) == ("feedback", 3, [], True)
+    assert math.isclose(float(embedding.strip("[]").split(",")[0]), vector(99)[0], rel_tol=1e-5)
+
+
+def test_a_superseded_or_unknown_memory_cant_be_edited(db):
+    conn, a, _ = db
+    s = _session(conn, a, 8)
+    old, new = _memory(conn, a, s, "Old claim."), _memory(conn, a, s, "New claim.")
+    mark_superseded(conn, old, new)
+    with as_user(conn, a):
+        assert update_memory_text(conn, a, old, "Changed.", vector(1)) is None
+        assert update_memory_text(conn, a, uuid4(), "Changed.", vector(1)) is None
+    assert conn.execute("select text from public.memories where id = %s", (old,)).fetchone()[0] == "Old claim."
+
+
+def test_deleting_a_memory_takes_its_older_versions_and_nothing_else(db):
+    conn, a, _ = db
+    s = _session(conn, a, 8)
+    oldest, old, current, other = (_memory(conn, a, s, text) for text in ("Oldest.", "Old.", "Current.", "Other."))
+    mark_superseded(conn, oldest, old)
+    mark_superseded(conn, old, current)
+    with as_user(conn, a):
+        assert delete_memory(conn, a, current) is True
+        assert [m.id for m in load_knows(conn, a).memories] == [str(other)]
+    assert _count(conn, "memories", a) == 1
+
+
+def test_a_superseded_memory_cant_be_deleted_on_its_own(db):
+    conn, a, _ = db
+    s = _session(conn, a, 8)
+    old, new = _memory(conn, a, s, "Old."), _memory(conn, a, s, "New.")
+    mark_superseded(conn, old, new)
+    with as_user(conn, a):
+        assert delete_memory(conn, a, old) is False
+    assert _count(conn, "memories", a) == 2
+
+
+def test_editing_an_interview_corrects_it_in_place(db):
+    conn, a, _ = db
+    old, current = _interview(conn, a, 13), _interview(conn, a, 14)
+    conn.execute("update public.pipeline set superseded_by = %s where id = %s", (current, old))
+    fields = InterviewFields("Sprout Social", None, "panel", date(2026, 11, 21), time(9, 30), "Bring the deck.")
+    with as_user(conn, a):
+        edited = update_interview(conn, a, current, fields)
+        assert update_interview(conn, a, old, fields) is None
+    assert (edited.id, edited.fields) == (str(current), fields)
+    assert edited.moved_from == ((date(2026, 11, 13), time(14, 0)),)
+    assert _count(conn, "pipeline", a) == 2  # a correction, not a new version
+
+
+def test_deleting_an_interview_takes_its_history(db):
+    conn, a, _ = db
+    old, current = _interview(conn, a, 13), _interview(conn, a, 14)
+    conn.execute("update public.pipeline set superseded_by = %s where id = %s", (current, old))
+    with as_user(conn, a):
+        assert delete_interview(conn, a, old) is False
+        assert delete_interview(conn, a, current) is True
+    assert _count(conn, "pipeline", a) == 0
+
+
+def test_a_profile_edit_changes_only_the_fields_it_names(db):
+    conn, a, _ = db
+    confirm_age(conn, a, NOW, "America/Chicago")
+    with as_user(conn, a):
+        update_profile(conn, a, {"summary": "MS in Information Management"})
+        named = update_profile(conn, a, {"display_name": "Maya", "target_roles": ["BDR", "Analyst"]})
+        cleared = update_profile(conn, a, {"display_name": None})
+        assert age_confirmed(conn, a)
+    assert named == Profile("Maya", "MS in Information Management", ("BDR", "Analyst"), "America/Chicago")
+    assert cleared == Profile(None, "MS in Information Management", ("BDR", "Analyst"), "America/Chicago")
+
+
+def test_a_profile_edit_without_a_profile_creates_one(db):
+    conn, a, _ = db
+    with as_user(conn, a):
+        assert update_profile(conn, a, {"summary": "Career changer"}) == Profile(None, "Career changer", (), "UTC")
+
+
+def test_knows_reads_and_changes_only_the_callers_rows(db):
+    conn, a, b = db
+    memory, interview = _memory(conn, a, _session(conn, a, 8), "A's memory."), _interview(conn, a, 14)
+    with as_user(conn, b):
+        assert load_knows(conn, b) == Knows("UTC", None, (), ())
+        for user in (b, a):  # b's own id, then a's id under b's sign-in: RLS still hides a's rows
+            assert update_memory_text(conn, user, memory, "Taken.", vector(2)) is None
+            assert delete_memory(conn, user, memory) is False
+            assert update_interview(conn, user, interview, InterviewFields("X", None, "panel", None, None, None)) is None
+            assert delete_interview(conn, user, interview) is False
+    assert conn.execute("select text from public.memories where id = %s", (memory,)).fetchone()[0] == "A's memory."
+    assert _count(conn, "pipeline", a) == 1

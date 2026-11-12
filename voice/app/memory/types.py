@@ -88,3 +88,54 @@ class SearchHit:
     text: str
     source_turns: tuple[str, ...]
     score: float
+
+
+@dataclass(frozen=True)
+class Source:
+    """Where a remembered item came from: its session's mode and start. When that session is gone,
+    mode is None and at is when the item was saved."""
+
+    mode: str | None
+    at: datetime
+
+
+@dataclass(frozen=True)
+class KnownMemory:
+    """A current memory, as the "What Wren knows" page shows it."""
+
+    id: str
+    kind: str
+    text: str
+    source: Source
+
+
+@dataclass(frozen=True)
+class InterviewFields:
+    """What the owner can correct on a pipeline row. Dates and times are local to the user."""
+
+    company: str
+    role: str | None
+    stage: str
+    next_date: date | None
+    next_time: time | None
+    notes: str | None
+
+
+@dataclass(frozen=True)
+class KnownInterview:
+    """A current pipeline row, with the date and time of each version it replaced, newest first."""
+
+    id: str
+    fields: InterviewFields
+    source: Source
+    moved_from: tuple[tuple[date | None, time | None], ...]
+
+
+@dataclass(frozen=True)
+class Knows:
+    """Everything the "What Wren knows" page shows. timezone is the profile's, or UTC with no profile."""
+
+    timezone: str
+    profile: Profile | None
+    pipeline: tuple[KnownInterview, ...]
+    memories: tuple[KnownMemory, ...]  # current only, newest first

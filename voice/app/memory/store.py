@@ -9,16 +9,19 @@ keeps its own copy of these tables in a separate schema (evals/schema.py).
 """
 
 import json
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import date, datetime, time
 from uuid import UUID
 
 import psycopg
 from psycopg import sql
 from psycopg.types.json import Jsonb
 
-from app.memory.types import ExtractedMemory, FeedbackNote, PipelineEntry, Profile, SearchHit, Session
+from app.memory.types import (
+    ExtractedMemory, FeedbackNote, InterviewFields, KnownInterview, KnownMemory, Knows, PipelineEntry, Profile, SearchHit,
+    Session, Source,
+)
 
 # hybrid_search() ranking parameters a caller may set, and their SQL types.
 RANKING_PARAMS = {
@@ -283,3 +286,136 @@ def pipeline_between(
         "order by next_date, next_time nulls last, company"
     ).format(sql.Identifier(schema, "pipeline"))
     return [PipelineEntry(*row) for row in conn.execute(query, (user_id, start, end)).fetchall()]
+
+
+# The profile fields the owner can change on the "What Wren knows" page. The time zone is set at the age step.
+PROFILE_FIELDS = ("display_name", "summary", "target_roles")
+
+
+def load_knows(conn: psycopg.Connection, user_id: UUID, *, schema: str = "public") -> Knows:
+    """Everything the "What Wren knows" page shows: the profile, the current interviews with the dates
+    they replaced, and the current memories, newest first. Each item carries its session's mode and start,
+    or, when that session is gone, when the item was saved."""
+    profile = load_profile(conn, user_id, schema=schema)
+    query = sql.SQL(
+        "select m.id, m.kind, m.text, s.mode, coalesce(s.started_at, m.created_at) as dated_at from {memories} m "
+        "left join {sessions} s on s.id = m.source_session "
+        "where m.user_id = %s and m.superseded_by is null "
+        "order by dated_at desc, m.created_at desc, m.id"
+    ).format(memories=sql.Identifier(schema, "memories"), sessions=sql.Identifier(schema, "sessions"))
+    memories = tuple(
+        KnownMemory(str(id), kind, text, Source(mode, at))
+        for id, kind, text, mode, at in conn.execute(query, (user_id,)).fetchall()
+    )
+    timezone = profile.timezone if profile else "UTC"
+    return Knows(timezone, profile, tuple(_interviews(conn, user_id, schema)), memories)
+
+
+def _interviews(conn: psycopg.Connection, user_id: UUID, schema: str, only: UUID | None = None) -> list[KnownInterview]:
+    """Current pipeline rows (only that one, when `only` is given), each with its source and the date and
+    time of every version it replaced, newest first."""
+    pipeline, sessions = sql.Identifier(schema, "pipeline"), sql.Identifier(schema, "sessions")
+    params = {"user_id": user_id, "only": only}
+    current = sql.SQL(
+        "select p.id, p.company, p.role, p.stage, p.next_date, p.next_time, p.notes, s.mode, "
+        "coalesce(s.started_at, p.created_at) from {pipeline} p left join {sessions} s on s.id = p.source_session "
+        "where p.user_id = %(user_id)s and p.superseded_by is null and (%(only)s::uuid is null or p.id = %(only)s::uuid) "
+        "order by p.next_date, p.next_time, p.company, p.id"
+    ).format(pipeline=pipeline, sessions=sessions)
+    older = sql.SQL(
+        "with recursive chain as ("
+        " select id as head, id, next_date, next_time, 0 as depth from {pipeline}"
+        " where user_id = %(user_id)s and superseded_by is null and (%(only)s::uuid is null or id = %(only)s::uuid)"
+        " union all"
+        " select c.head, p.id, p.next_date, p.next_time, c.depth + 1 from {pipeline} p"
+        " join chain c on p.superseded_by = c.id where p.user_id = %(user_id)s"
+        ") select head, next_date, next_time from chain where depth > 0 order by head, depth, id"
+    ).format(pipeline=pipeline)
+    history: dict[UUID, list[tuple[date | None, time | None]]] = {}
+    for head, next_date, next_time in conn.execute(older, params).fetchall():
+        history.setdefault(head, []).append((next_date, next_time))
+    return [
+        KnownInterview(
+            str(id), InterviewFields(company, role, stage, next_date, next_time, notes), Source(mode, at),
+            tuple(history.get(id, ())),
+        )
+        for id, company, role, stage, next_date, next_time, notes, mode, at in conn.execute(current, params).fetchall()
+    ]
+
+
+def update_memory_text(
+    conn: psycopg.Connection, user_id: UUID, memory_id: UUID, text: str, embedding: list[float], *, schema: str = "public"
+) -> KnownMemory | None:
+    """Give a current memory the owner's text and its embedding. Kind, entities and importance stay, and
+    tsv follows the text. None when the user has no such current memory."""
+    query = sql.SQL(
+        "with updated as ("
+        " update {memories} set text = %s, embedding = %s::extensions.vector"
+        " where id = %s and user_id = %s and superseded_by is null"
+        " returning id, kind, text, source_session, created_at"
+        ") select u.id, u.kind, u.text, s.mode, coalesce(s.started_at, u.created_at) from updated u"
+        " left join {sessions} s on s.id = u.source_session"
+    ).format(memories=sql.Identifier(schema, "memories"), sessions=sql.Identifier(schema, "sessions"))
+    row = conn.execute(query, (text, to_pgvector(embedding), memory_id, user_id)).fetchone()
+    return KnownMemory(str(row[0]), row[1], row[2], Source(row[3], row[4])) if row else None
+
+
+def _delete_current(conn: psycopg.Connection, table: str, user_id: UUID, row_id: UUID, schema: str) -> bool:
+    """Delete a current row and every older version that leads to it through superseded_by, in one
+    statement. superseded_by is `on delete set null`, so deleting the newest row alone would make the
+    one it replaced current again."""
+    query = sql.SQL(
+        "with recursive chain as ("
+        " select id from {table} where id = %(id)s and user_id = %(user_id)s and superseded_by is null"
+        " union all"
+        " select t.id from {table} t join chain c on t.superseded_by = c.id where t.user_id = %(user_id)s"
+        ") delete from {table} where id in (select id from chain)"
+    ).format(table=sql.Identifier(schema, table))
+    return conn.execute(query, {"id": row_id, "user_id": user_id}).rowcount > 0
+
+
+def delete_memory(conn: psycopg.Connection, user_id: UUID, memory_id: UUID, *, schema: str = "public") -> bool:
+    """False when the user has no such current memory."""
+    return _delete_current(conn, "memories", user_id, memory_id, schema)
+
+
+def delete_interview(conn: psycopg.Connection, user_id: UUID, interview_id: UUID, *, schema: str = "public") -> bool:
+    """False when the user has no such current interview."""
+    return _delete_current(conn, "pipeline", user_id, interview_id, schema)
+
+
+def update_interview(
+    conn: psycopg.Connection, user_id: UUID, interview_id: UUID, fields: InterviewFields, *, schema: str = "public"
+) -> KnownInterview | None:
+    """Correct a current pipeline row in place. A correction isn't a reschedule, so it makes no new
+    version. None when the user has no such current interview."""
+    query = sql.SQL(
+        "update {} set company = %s, role = %s, stage = %s, next_date = %s, next_time = %s, notes = %s "
+        "where id = %s and user_id = %s and superseded_by is null returning id"
+    ).format(sql.Identifier(schema, "pipeline"))
+    values = (fields.company, fields.role, fields.stage, fields.next_date, fields.next_time, fields.notes)
+    row = conn.execute(query, (*values, interview_id, user_id)).fetchone()
+    if row is None:
+        return None
+    (interview,) = _interviews(conn, user_id, schema, only=row[0])
+    return interview
+
+
+def update_profile(conn: psycopg.Connection, user_id: UUID, changes: Mapping[str, object], *, schema: str = "public") -> Profile:
+    """Set the named profile fields (PROFILE_FIELDS; other keys are ignored). With no profile row yet, this
+    makes one with the table's defaults, time zone UTC included."""
+    table = sql.Identifier(schema, "profiles")
+    columns = [name for name in PROFILE_FIELDS if name in changes]
+    if columns:
+        query = sql.SQL(
+            "insert into {table} (user_id, {columns}) values (%s, {values}) on conflict (user_id) do update set {sets}"
+        ).format(
+            table=table,
+            columns=sql.SQL(", ").join(map(sql.Identifier, columns)),
+            values=sql.SQL(", ").join(sql.Placeholder() * len(columns)),
+            sets=sql.SQL(", ").join(sql.SQL("{c} = excluded.{c}").format(c=sql.Identifier(c)) for c in columns),
+        )
+        conn.execute(query, (user_id, *(changes[c] for c in columns)))
+    else:
+        conn.execute(sql.SQL("insert into {} (user_id) values (%s) on conflict (user_id) do nothing").format(table), (user_id,))
+    return load_profile(conn, user_id, schema=schema)
