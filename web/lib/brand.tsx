@@ -1,3 +1,5 @@
+import { BIRD_DAY, Bird } from "./bird";
+
 export const brand = {
   name: "Wren",
   description: "A voice companion for your job search.",
@@ -7,7 +9,8 @@ export const brand = {
   accent: "#7b3a1d",
 };
 
-// Placeholder mark until there is a real illustrated avatar.
+// The app icon: Wren on apricot. At 0.78 of the icon's width, every part of the bird stays within 0.37 of
+// the width from the center, inside the maskable icon's safe circle (0.4), so no launcher clips it.
 export function WrenMark({ size }: { size: number }) {
   return (
     <div
@@ -17,13 +20,10 @@ export function WrenMark({ size }: { size: number }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: brand.accent,
-        color: brand.background,
-        fontSize: Math.round(size * 0.6),
-        fontWeight: 700,
+        background: brand.background,
       }}
     >
-      W
+      <Bird paint={BIRD_DAY} width={Math.round(size * 0.78)} />
     </div>
   );
 }

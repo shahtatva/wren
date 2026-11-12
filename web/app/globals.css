@@ -11,6 +11,18 @@
   --wren: #7b3a1d; /* brand.accent: the wordmark, headings, Send and Wren's song lines */
   --feather: #c98a5e; /* rules, never text */
   --brick: #842a1f; /* notices that need attention, and Delete */
+
+  /* The bird and its branch (lib/bird.tsx). BIRD_DAY there holds the same light values, for the icon. */
+  --bird: #8a4421;
+  --bird-dark: #6a3017;
+  --bird-bar: #3b1a0c;
+  --bird-belly: #f7ddb8;
+  --bird-brow: #fff4e4;
+  --bird-eye: #24120a;
+  --beak: #3b2416;
+  --legs: #6a3f22;
+  --branch: #6a3f22;
+  --leaf: #7d7a33;
 }
 
 @theme inline {
@@ -35,6 +47,17 @@
     --wren: #e09a6a;
     --feather: #5e4658;
     --brick: #f08b78;
+
+    --bird: #b0603a;
+    --bird-dark: #8a4421;
+    --bird-bar: #4a2210;
+    --bird-belly: #f2d3ae;
+    --bird-brow: #fff4e4;
+    --bird-eye: #1a0e08;
+    --beak: #2a1a10;
+    --legs: #b88a64;
+    --branch: #b88a64;
+    --leaf: #a7a35a;
   }
 }
 
@@ -82,3 +105,76 @@ body {
     animation: none;
   }
 }
+
+/* Wren on its branch (lib/bird.tsx). Its posture shows what Wren is doing; the poses are the design
+   canvas's, row A. In the components layer, so a utility such as h-[200px] can still size a perch. */
+@layer components {
+  .bird .bird-body { fill: var(--bird); }
+  .bird .bird-dark { fill: var(--bird-dark); }
+  .bird .bird-bars { fill: none; stroke: var(--bird-bar); stroke-linecap: round; }
+  .bird .bird-belly { fill: var(--bird-belly); }
+  .bird .bird-brow { fill: none; stroke: var(--bird-brow); stroke-width: 3.2; stroke-linecap: round; }
+  .bird .bird-eye { fill: var(--bird-eye); }
+  .bird .bird-eye-shut { fill: none; stroke: var(--bird-eye); stroke-width: 2.2; stroke-linecap: round; }
+  .bird .bird-beak { fill: var(--beak); }
+  .bird .bird-legs { fill: none; stroke: var(--legs); stroke-width: 2.6; stroke-linecap: round; }
+  .bird .bird-song { fill: none; stroke: var(--wren); stroke-width: 2.6; stroke-linecap: round; }
+  .bird .bird-hear { fill: none; stroke: var(--ink-soft); stroke-width: 2.4; stroke-linecap: round; }
+  .perch-branch path { fill: none; stroke: var(--branch); stroke-linecap: round; vector-effect: non-scaling-stroke; }
+  .perch-branch .branch-line { stroke-width: 7; }
+  .perch-branch .branch-twig { stroke-width: 4; }
+  .perch-branch .branch-leaf { fill: var(--leaf); stroke: none; }
+
+  /* The stage: the board's 236 px stage, in proportions, so the feet stay on the branch at any height. */
+  .perch { position: relative; height: clamp(150px, 28dvh, 236px); }
+  .perch-branch { position: absolute; left: 0; top: 70.3%; width: 100%; height: 25.4%; overflow: visible; }
+  .perch-bird { position: absolute; top: 16.5%; left: 50%; height: 67%; aspect-ratio: 210 / 158; transform: translateX(-56%); }
+  .perch-bird > .bird { display: block; width: 100%; height: 100%; }
+
+  .bird * { transform-box: view-box; }
+  .bird .bird-head { transform-origin: 92px 68px; transition: transform 0.35s ease; }
+  .bird .bird-tail { transform-origin: 52px 66px; transition: transform 0.35s ease; }
+  .bird .bird-hop { transform-origin: 75px 116px; }
+  .bird .bird-beak-top { transform-origin: 115px 54px; transition: transform 0.08s linear; }
+  .bird .bird-beak-bot { transform-origin: 115px 58px; transition: transform 0.08s linear; }
+  .bird .bird-eye-shut, .bird .bird-song, .bird .bird-hear { display: none; }
+
+  [data-pose="listening"] .bird-head { animation: bird-curious 6s ease-in-out infinite; }
+  [data-pose="listening"] .bird-tail { transform: rotate(-10deg); }
+  [data-pose="looking"] .bird-head, [data-pose="reconnecting"] .bird-head { animation: bird-look 2.2s ease-in-out infinite; }
+  [data-pose="reconnecting"] .branch-line { stroke-dasharray: 2 11; }
+  [data-pose="leaning"] .bird-head { transform: rotate(-18deg); }
+  [data-pose="leaning"] .bird-tail { transform: rotate(-14deg); }
+  [data-pose="leaning"] .bird-hear { display: inline; }
+  [data-pose="leaning"] .bird-hear path { opacity: 0; animation: bird-pulse 1.2s ease-in infinite; }
+  [data-pose="leaning"] .bird-hear .h2 { animation-delay: 0.2s; }
+  [data-pose="leaning"] .bird-hear .h1 { animation-delay: 0.4s; }
+  [data-pose="thinking"] .bird-hop { animation: bird-hop 1.8s ease-in-out infinite; }
+  [data-pose="thinking"] .bird-head { transform: rotate(-26deg); }
+  [data-pose="speaking"] .bird-head { transform: rotate(-6deg); }
+  [data-pose="speaking"] .bird-tail { transform: rotate(-16deg); }
+  [data-pose="speaking"] .bird-beak-top { transform: rotate(calc(var(--level, 0) * -18deg)); }
+  [data-pose="speaking"] .bird-beak-bot { transform: rotate(calc(var(--level, 0) * 10deg)); }
+  [data-pose="speaking"] .bird-song { display: inline; }
+  [data-pose="speaking"] .bird-song path { transition: opacity 0.08s linear; }
+  [data-pose="speaking"] .bird-song .s1 { opacity: clamp(0, calc(var(--level, 0) * 3), 1); }
+  [data-pose="speaking"] .bird-song .s2 { opacity: clamp(0, calc(var(--level, 0) * 3 - 1), 1); }
+  [data-pose="speaking"] .bird-song .s3 { opacity: clamp(0, calc(var(--level, 0) * 3 - 2), 1); }
+  [data-pose="tucked"] .bird-eye { display: none; }
+  [data-pose="tucked"] .bird-eye-shut { display: inline; }
+  [data-pose="tucked"] .bird-head { transform: rotate(16deg) translate(-2px, 2px); }
+  [data-pose="tucked"] .bird-tail { transform: rotate(12deg); }
+
+  /* Still, but every pose still reads. The song lines still fade with the level. */
+  @media (prefers-reduced-motion: reduce) {
+    .bird *, .perch-branch * { animation: none !important; transition: none !important; }
+    [data-pose="leaning"] .bird-hear path { opacity: 1; }
+    [data-pose="speaking"] .bird-beak-top { transform: rotate(-14deg); }
+    [data-pose="speaking"] .bird-beak-bot { transform: rotate(8deg); }
+  }
+}
+
+@keyframes bird-curious { 0%, 40% { transform: rotate(-12deg); } 48%, 88% { transform: rotate(3deg); } 96%, 100% { transform: rotate(-12deg); } }
+@keyframes bird-hop { 0%, 60%, 100% { transform: translate(0, 0); } 12% { transform: translate(5px, -12px); } 24% { transform: translate(10px, 0); } 36% { transform: translate(5px, -12px); } 48% { transform: translate(0, 0); } }
+@keyframes bird-look { 0%, 100% { transform: rotate(-14deg); } 50% { transform: rotate(8deg); } }
+@keyframes bird-pulse { 0% { opacity: 0; } 25% { opacity: 1; } 100% { opacity: 0; } }
