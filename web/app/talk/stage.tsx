@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, type Ref } from "react";
+import { useCallback, useLayoutEffect, useRef, type Ref } from "react";
 import { Bird, Perch } from "@/lib/bird";
 import type { BirdView } from "@/lib/bird-state";
 import { FOCUS, QUIET } from "@/lib/ui";
@@ -21,11 +21,24 @@ function MicGlyph({ off }: { off: boolean }) {
  * talk page's from before Perch; the hint repeats the label for sighted users, so screen readers skip it. */
 export function Stage({ view, mock, onTalk, levelRef }: { view: BirdView; mock: boolean; onTalk: () => void; levelRef: Ref<HTMLDivElement> }) {
   const off = view.label === "Turn the mic on";
+  // A mock swaps the bird for the mic button and back, which replaces the button. If the keyboard was on the
+  // old one, the new one takes focus, so the next Space still reaches it. The old button's ref cleanup runs
+  // while it's still on the page, before the new button's ref is set.
+  const hadFocus = useRef(false);
+  const talkButton = useCallback((node: HTMLButtonElement | null) => {
+    if (node === null) return;
+    if (hadFocus.current) node.focus();
+    hadFocus.current = false;
+    return () => {
+      hadFocus.current = document.activeElement === node;
+    };
+  }, []);
   return (
     <div ref={levelRef}>
       {mock ? (
         <div className="grid h-[clamp(150px,28dvh,236px)] place-items-center">
           <button
+            ref={talkButton}
             type="button"
             aria-label={view.label}
             onClick={onTalk}
@@ -36,7 +49,7 @@ export function Stage({ view, mock, onTalk, levelRef }: { view: BirdView; mock: 
         </div>
       ) : (
         <Perch pose={view.pose} className="-mx-5">
-          <button type="button" aria-label={view.label} onClick={onTalk} className={`perch-bird cursor-pointer rounded-[28px] ${FOCUS}`}>
+          <button ref={talkButton} type="button" aria-label={view.label} onClick={onTalk} className={`perch-bird cursor-pointer rounded-[28px] ${FOCUS}`}>
             <Bird />
           </button>
         </Perch>
