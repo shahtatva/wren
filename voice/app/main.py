@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import allowed_origins
 from app.auth_routes import router as auth_router
+from app.knows_routes import router as knows_router
 from app.routes import router
 
 # The app's own INFO lines (one per turn, one per retrieval) next to uvicorn's.
@@ -19,11 +20,12 @@ app = FastAPI(title="Wren voice", docs_url=None, redoc_url=None, openapi_url=Non
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(allowed_origins()),
-    allow_methods=["POST"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],  # the "What Wren knows" page reads, corrects and deletes
     allow_headers=["content-type", "authorization"],
 )
 app.include_router(router)
 app.include_router(auth_router)
+app.include_router(knows_router)
 
 
 @app.get("/health")

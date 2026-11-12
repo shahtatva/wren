@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from uuid import UUID
@@ -8,8 +9,8 @@ import pytest
 
 from app.config import Settings
 from app.conversation import Background, HistoryTurn
-from app.memory import store
-from app.memory.live import MemoryProvider, NoMemory, PostgresMemory, _history
+from app.memory import live, store
+from app.memory.live import MemoryOff, MemoryProvider, NoMemory, PostgresMemory, _history
 
 USER = UUID("6f1c2c1e-3d1a-4a52-9a43-0b7f2a1f9e10")
 NOW = datetime(2026, 10, 16, 23, 0, tzinfo=timezone.utc)
@@ -205,3 +206,36 @@ def test_a_confirmation_is_remembered():
     assert postgres.confirmations == [(USER, at, "America/Chicago")]
     postgres.age_error = psycopg.OperationalError("down")
     assert asyncio.run(provider.age_confirmed(USER)) is True
+
+
+MEMORY_ID = UUID("0b8a3f5e-1c2d-4e6f-8a9b-0c1d2e3f4a5b")
+
+
+def test_editing_a_memory_embeds_the_new_text_as_a_document_before_saving(monkeypatch):
+    connections(monkeypatch, LiveConn())
+    order = []
+    monkeypatch.setattr(store, "as_user", lambda conn, user_id: contextlib.nullcontext(conn))
+    monkeypatch.setattr(live, "embed_texts", lambda texts, task, settings: order.append(("embed", texts, task)) or [[0.5] * 768])
+    monkeypatch.setattr(store, "update_memory_text",
+                        lambda conn, user_id, memory_id, text, embedding: order.append(("save", text, embedding[0])) or "saved")
+    assert asyncio.run(PostgresMemory(SETTINGS).edit_memory(USER, MEMORY_ID, "New text")) == "saved"
+    assert order == [("embed", ["New text"], "document"), ("save", "New text", 0.5)]
+
+
+def test_a_failed_embedding_changes_nothing(monkeypatch):
+    connections(monkeypatch, LiveConn())
+    saved = []
+
+    def embedding_down(texts, task, settings):
+        raise RuntimeError("embedding service down")
+
+    monkeypatch.setattr(live, "embed_texts", embedding_down)
+    monkeypatch.setattr(store, "update_memory_text", lambda *args: saved.append(args))
+    with pytest.raises(RuntimeError):
+        asyncio.run(PostgresMemory(SETTINGS).edit_memory(USER, MEMORY_ID, "New text"))
+    assert saved == []
+
+
+def test_no_memory_refuses_what_wren_knows():
+    with pytest.raises(MemoryOff):
+        asyncio.run(NoMemory("no schema").knows(USER))

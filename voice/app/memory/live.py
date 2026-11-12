@@ -24,12 +24,17 @@ from app.memory import store
 from app.memory.embed import embed_texts
 from app.memory.retrieve import retrieve as run_retrieval
 from app.memory.rewrite import rewrite_questions
+from app.memory.types import InterviewFields, KnownInterview, KnownMemory, Knows, Profile
 from app.voice.tuning import Tuning
 
 logger = logging.getLogger(__name__)
 
 # No live query comes near this. A stuck one must not hold the shared connection for long.
 LIVE_STATEMENT_TIMEOUT_MS = 3000
+
+
+class MemoryOff(Exception):
+    """Memory is off for this user, so what Wren knows can't be read or changed. The message says why."""
 
 
 class Memory(Protocol):
@@ -44,6 +49,19 @@ class Memory(Protocol):
     async def append(self, session_id: str, user_id: UUID, turns: list[dict]) -> None: ...
 
     async def close_session(self, session_id: str, user_id: UUID, now: datetime) -> None: ...
+
+    # The "What Wren knows" page. None or False: the user has no such current row.
+    async def knows(self, user_id: UUID) -> Knows: ...
+
+    async def edit_memory(self, user_id: UUID, memory_id: UUID, text: str) -> KnownMemory | None: ...
+
+    async def delete_memory(self, user_id: UUID, memory_id: UUID) -> bool: ...
+
+    async def edit_interview(self, user_id: UUID, interview_id: UUID, fields: InterviewFields) -> KnownInterview | None: ...
+
+    async def delete_interview(self, user_id: UUID, interview_id: UUID) -> bool: ...
+
+    async def edit_profile(self, user_id: UUID, changes: dict[str, object]) -> Profile: ...
 
 
 class NoMemory:
@@ -61,6 +79,25 @@ class NoMemory:
 
     async def close_session(self, session_id, user_id, now):
         return None
+
+    # With memory off there's nothing to show or change, so the page's calls refuse.
+    async def knows(self, user_id):
+        raise MemoryOff(self.status)
+
+    async def edit_memory(self, user_id, memory_id, text):
+        raise MemoryOff(self.status)
+
+    async def delete_memory(self, user_id, memory_id):
+        raise MemoryOff(self.status)
+
+    async def edit_interview(self, user_id, interview_id, fields):
+        raise MemoryOff(self.status)
+
+    async def delete_interview(self, user_id, interview_id):
+        raise MemoryOff(self.status)
+
+    async def edit_profile(self, user_id, changes):
+        raise MemoryOff(self.status)
 
 
 def _mock_id(saved) -> int | None:
@@ -210,6 +247,34 @@ class PostgresMemory:
                 store.confirm_age(conn, user_id, at, tz)
 
         await asyncio.to_thread(self._run, work)
+
+    def _as_user(self, user_id: UUID, call):
+        """Run call(conn) as this user, in a worker thread, on the shared connection."""
+        def work(conn):
+            with store.as_user(conn, user_id):
+                return call(conn)
+
+        return asyncio.to_thread(self._run, work)
+
+    async def knows(self, user_id):
+        return await self._as_user(user_id, lambda conn: store.load_knows(conn, user_id))
+
+    async def edit_memory(self, user_id, memory_id, text):
+        # Embed first: if the embedding call fails, nothing has changed.
+        (embedding,) = await asyncio.to_thread(embed_texts, [text], "document", self._settings)
+        return await self._as_user(user_id, lambda conn: store.update_memory_text(conn, user_id, memory_id, text, embedding))
+
+    async def delete_memory(self, user_id, memory_id):
+        return await self._as_user(user_id, lambda conn: store.delete_memory(conn, user_id, memory_id))
+
+    async def edit_interview(self, user_id, interview_id, fields):
+        return await self._as_user(user_id, lambda conn: store.update_interview(conn, user_id, interview_id, fields))
+
+    async def delete_interview(self, user_id, interview_id):
+        return await self._as_user(user_id, lambda conn: store.delete_interview(conn, user_id, interview_id))
+
+    async def edit_profile(self, user_id, changes):
+        return await self._as_user(user_id, lambda conn: store.update_profile(conn, user_id, changes))
 
 
 class MemoryProvider:
