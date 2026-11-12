@@ -168,6 +168,9 @@ body {
   /* Still, but every pose still reads. The song lines still fade with the level. */
   @media (prefers-reduced-motion: reduce) {
     .bird *, .perch-branch * { animation: none !important; transition: none !important; }
+    /* Hold the head where its loop would have taken it, so each pose still differs from the others. */
+    [data-pose="looking"] .bird-head, [data-pose="reconnecting"] .bird-head { transform: rotate(8deg); }
+    [data-pose="listening"] .bird-head { transform: rotate(-12deg); }
     [data-pose="leaning"] .bird-hear path { opacity: 1; }
     [data-pose="speaking"] .bird-beak-top { transform: rotate(-14deg); }
     [data-pose="speaking"] .bird-beak-bot { transform: rotate(8deg); }

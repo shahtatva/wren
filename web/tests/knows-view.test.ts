@@ -101,3 +101,11 @@ test("each memory section holds its own kind, in the server's order", () => {
   assert.deepEqual(memoriesIn(knows, "stories").map((m) => m.id), ["s1"]);
   assert.deepEqual(memoriesIn(knows, "moments"), []);
 });
+
+test("a later change that keeps the date doesn't hide where the interview moved from", () => {
+  const moved = interview("a", "2026-11-13", "14:00", [
+    { next_date: "2026-11-13", next_time: "14:00" }, // the stage changed after the move
+    { next_date: "2026-11-12", next_time: "14:00" },
+  ]);
+  assert.equal(movedFrom(moved), "Thu, Nov 12 at 2:00 PM");
+});

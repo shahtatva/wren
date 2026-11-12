@@ -76,11 +76,11 @@ export function interviewLine(row: InterviewFields): string {
   return when ? `${stage}, ${when}` : stage;
 }
 
-/** When the interview was before it moved, or null if the last change didn't move it. */
+/** When the interview was before it last moved, or null if it never moved. Changes that kept the date and
+ * time, like a new stage, are skipped. */
 export function movedFrom(row: KnownInterview): string | null {
-  const before = row.moved_from[0];
-  if (!before || (before.next_date === row.next_date && before.next_time === row.next_time)) return null;
-  return whenLabel(before.next_date, before.next_time);
+  const before = row.moved_from.find((older) => older.next_date !== row.next_date || older.next_time !== row.next_time);
+  return before ? whenLabel(before.next_date, before.next_time) : null;
 }
 
 const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
