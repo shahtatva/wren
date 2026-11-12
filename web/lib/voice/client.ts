@@ -124,6 +124,12 @@ export class VoiceClient {
         this.player = null; // Wren still answers, in text
       }
     }
+    if (this.stopped) {
+      // The page was left while the player was being made: let it go, and open no session.
+      this.player?.close();
+      this.player = null;
+      return;
+    }
     // Open the socket while the mic starts: the permission prompt and the capture worklet
     // take about a second, and the server can get ready in that time. The player comes
     // first, because the hello says whether Wren's voice can play.

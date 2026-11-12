@@ -483,3 +483,24 @@ test("POST /turn passes the mock and the role on too", async () => {
   assert.ok(events.some((event) => event.type === "mock" && event.on));
   assert.deepEqual(events.filter((event) => event.type === "wren").map((event) => event.role), ["wren", "interviewer"]);
 });
+
+test("leaving while Wren's speaker is still being made opens no session, and lets the speaker go", async () => {
+  // The talk page stops its client when it's hidden. A tap's start() may still be waiting on the player then.
+  const player = new FakePlayer();
+  let made: (value: FakePlayer) => void = () => {};
+  let micStarted = false;
+  swap(globalThis, "WebSocket", FakeSocket);
+  swap(Player, "create", () => new Promise((resolve) => (made = resolve)));
+  const startMic = async (): Promise<Mic> => {
+    micStarted = true;
+    return { setEnabled() {}, stop() {} } as unknown as Mic;
+  };
+  const client = new VoiceClient({ onEvent: () => {}, startMic });
+  const starting = client.start();
+  client.stop();
+  made(player);
+  await starting;
+  assert.equal(FakeSocket.made.length, 0, "no socket, so no session and no opener from a page that's gone");
+  assert.equal(micStarted, false, "the mic is never asked for");
+  assert.deepEqual(player.calls, ["close"]);
+});
